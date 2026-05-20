@@ -168,9 +168,13 @@ with tab2:
         if agent_id == "hr_agent":
             task_type = st.selectbox("Task Type", ["employee_onboarding", "leave_request", "performance_review"])
         elif agent_id == "finance_agent":
-            task_type = st.selectbox("Task Type", ["expense_report", "budget_planning", "invoice_processing"])
+            task_type = st.selectbox(
+                "Task Type",
+                ["expense_report", "budget_planning", "invoice_processing"])
         elif agent_id == "medical_agent":
-            task_type = st.selectbox("Task Type", ["appointment_scheduling", "patient_records", "prescription_management"])
+            task_type = st.selectbox(
+                "Task Type",
+                ["appointment_scheduling", "patient_records", "prescription_management"])
         else:
             task_type = st.selectbox("Task Type", ["coordinate_task", "supervise_workflow"])
     
@@ -315,7 +319,11 @@ with tab3:
                         col_a, col_b = st.columns(2)
                         with col_a:
                             agent_status = result.get("status", "unknown")
-                            status_color = "🟢" if agent_status == "healthy" else "🟡" if agent_status == "degraded" else "🔴"
+                            status_color = (
+                                "🟢" if agent_status == "healthy"
+                                else "🟡" if agent_status == "degraded"
+                                else "🔴"
+                            )
                             st.metric(f"{status_color} Status", agent_status)
                         
                         with col_b:

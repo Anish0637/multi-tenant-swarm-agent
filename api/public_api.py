@@ -222,10 +222,14 @@ async def health():
 async def list_agents():
     """List all available agents and their current status."""
     return [
-        AgentInfo(name="HR Agent",       type="hr",         status="active", description="Employee management, leave, payroll, performance"),
-        AgentInfo(name="Finance Agent",  type="finance",    status="active", description="Expenses, budgets, invoices, financial reports"),
-        AgentInfo(name="Medical Agent",  type="medical",    status="active", description="Appointments, patient records, prescriptions"),
-        AgentInfo(name="Supervisor",     type="supervisor", status="active", description="Orchestrates multi-agent workflows"),
+        AgentInfo(name="HR Agent",      type="hr",         status="active",
+                  description="Employee management, leave, payroll, performance"),
+        AgentInfo(name="Finance Agent", type="finance",    status="active",
+                  description="Expenses, budgets, invoices, financial reports"),
+        AgentInfo(name="Medical Agent", type="medical",    status="active",
+                  description="Appointments, patient records, prescriptions"),
+        AgentInfo(name="Supervisor",    type="supervisor", status="active",
+                  description="Orchestrates multi-agent workflows"),
     ]
 
 
@@ -275,7 +279,9 @@ async def submit_task(request: TaskSubmitRequest, background_tasks: BackgroundTa
 
     background_tasks.add_task(_dispatch_to_mcp, task_id, request)
 
-    logger.info("Task accepted", extra={"task_id": task_id, "agent_type": request.agent_type, "tenant_id": request.tenant_id})
+    logger.info("Task accepted", extra={
+        "task_id": task_id, "agent_type": request.agent_type, "tenant_id": request.tenant_id
+    })
 
     return TaskSubmitResponse(
         task_id=task_id,

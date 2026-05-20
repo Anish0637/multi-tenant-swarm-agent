@@ -78,7 +78,7 @@ class CBACEnforcer:
                 rule_id="deny_afterhours_public",
                 name="Deny after-hours access from public network",
                 context_conditions={
-                    "hour": {"<": 9, "|": ">": 17},
+                    "hour": {"<": 9, ">": 17},
                     "network": "public",
                 },
                 effect="deny",

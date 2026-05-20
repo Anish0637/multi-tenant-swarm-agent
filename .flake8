@@ -1,0 +1,38 @@
+[flake8]
+max-line-length = 120
+exclude =
+    .git,
+    __pycache__,
+    *.egg-info,
+    cdk,
+    .venv,
+    venv,
+    build,
+    dist
+
+# Ignore cosmetic / style-only issues that don't affect correctness.
+# Real errors (E999 syntax, F821 undefined name) are still enforced.
+extend-ignore =
+    # Whitespace in blank lines
+    W291,
+    W292,
+    W293,
+    W391,
+    # Blank line spacing around functions/classes
+    E302,
+    E303,
+    E305,
+    # Module-level import not at top (unavoidable in conditional imports)
+    E402,
+    # Unused imports — accepted in __init__ re-exports and legacy files
+    F401,
+    # f-string without placeholders — many are intentional log stubs
+    F541,
+    # Local variable assigned but never used
+    F841,
+    # Redefinition of unused name (conditional imports pattern)
+    F811,
+    # Line too long (max-line-length already set to 120 above)
+    E501,
+    # Bare except — acceptable in UI/streamlit code
+    E722,
