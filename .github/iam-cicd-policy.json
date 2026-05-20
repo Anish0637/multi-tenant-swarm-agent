@@ -57,7 +57,10 @@
       "Sid": "PassRoleToECS",
       "Effect": "Allow",
       "Action": "iam:PassRole",
-      "Resource": "arn:aws:iam::*:role/ecsTaskExecutionRole"
+      "Resource": [
+        "arn:aws:iam::*:role/ecsTaskExecutionRole",
+        "arn:aws:iam::*:role/ecsTaskRole"
+      ]
     },
     {
       "Sid": "CallerIdentity",
