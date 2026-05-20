@@ -116,11 +116,16 @@ jobs:
       - name: Ensure ECR repositories exist
         run: |
           for REPO in mcp-server multi-tenant-swarm-agent; do
-            aws ecr describe-repositories --repository-names "$REPO" --region $AWS_REGION 2>/dev/null || \
+            if aws ecr describe-repositories --repository-names "$REPO" --region $AWS_REGION 2>/dev/null; then
+              echo "Repository $REPO already exists"
+            else
+              echo "Creating repository $REPO ..."
               aws ecr create-repository \
                 --repository-name "$REPO" \
                 --image-scanning-configuration scanOnPush=true \
-                --region $AWS_REGION
+                --region $AWS_REGION \
+              || { echo "ERROR: Could not create ECR repo $REPO — ensure ecr:CreateRepository is in the IAM policy"; exit 1; }
+            fi
           done
 
       - name: Set up Docker Buildx
