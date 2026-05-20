@@ -1,0 +1,36 @@
+# copilot/public-api/manifest.yml
+# FastAPI REST API — publicly accessible via HTTPS
+
+name: public-api
+type: Load Balanced Web Service
+
+image:
+  build:
+    dockerfile: docker/Dockerfile.api
+    context: .
+  port: 8000
+
+http:
+  path: '/api'
+  healthcheck:
+    path: '/api/health'
+    success_codes: '200'
+
+cpu: 512
+memory: 1024
+count:
+  range: 1-5
+  cpu_percentage: 70
+
+variables:
+  ENV: production
+  PORT: "8000"
+  LOG_LEVEL: INFO
+  MCP_SERVER_URL: http://mcp-server.${COPILOT_SERVICE_DISCOVERY_ENDPOINT}:8000
+
+secrets:
+  OPENAI_API_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/OPENAI_API_KEY
+  API_KEYS:       /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/API_KEYS
+
+logging:
+  retention: 30

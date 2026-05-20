@@ -1,0 +1,40 @@
+# copilot/mcp-server/manifest.yml
+# Runs the MCP server — internal load-balanced service (not public)
+
+name: mcp-server
+type: Backend Service
+
+image:
+  build:
+    dockerfile: docker/Dockerfile.mcp
+    context: .
+  port: 8000
+
+cpu: 512
+memory: 1024
+count:
+  range: 2-10
+  cooldown:
+    in: 60s
+    out: 30s
+  cpu_percentage: 70
+
+variables:
+  ENV: production
+  PORT: "8000"
+  MCP_SERVER_PORT: "8000"
+  LOG_LEVEL: INFO
+
+secrets:
+  OPENAI_API_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/OPENAI_API_KEY
+  API_KEYS:       /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/API_KEYS
+
+healthcheck:
+  command: ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"]
+  interval: 30s
+  retries: 3
+  timeout: 5s
+  start_period: 60s
+
+logging:
+  retention: 30

@@ -1,0 +1,29 @@
+# copilot/webapp/manifest.yml
+# Streamlit web UI — publicly accessible
+
+name: webapp
+type: Load Balanced Web Service
+
+image:
+  build:
+    dockerfile: docker/Dockerfile.webapp
+    context: .
+  port: 8501
+
+http:
+  path: '/'
+  healthcheck:
+    path: '/_stcore/health'
+    success_codes: '200'
+
+cpu: 256
+memory: 512
+count: 1
+
+variables:
+  ENV: production
+  MCP_SERVER_URL: http://mcp-server.${COPILOT_SERVICE_DISCOVERY_ENDPOINT}:8000
+  PUBLIC_API_URL: http://public-api.${COPILOT_SERVICE_DISCOVERY_ENDPOINT}:8000
+
+logging:
+  retention: 30

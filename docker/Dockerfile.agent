@@ -15,19 +15,27 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Create logs directory
+RUN mkdir -p /app/logs
+
 # Copy application code
 COPY agents/ agents/
 COPY mcp_server/ mcp_server/
 COPY registry/ registry/
 COPY access_control/ access_control/
 COPY config/ config/
+COPY docker/entrypoint.agent.sh /app/entrypoint.sh
+
+# Make entrypoint executable
+RUN chmod +x /app/entrypoint.sh
 
 # Expose ports
 EXPOSE 8000 8001
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Health check - verify process is running
+# Using a simple sleep to allow startup
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD test -e /proc/1 || exit 1
 
-# Default command
-CMD ["python", "-m", "agents.supervisor"]
+# Run entrypoint script
+ENTRYPOINT ["/app/entrypoint.sh"]

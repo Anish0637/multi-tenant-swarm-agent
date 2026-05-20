@@ -1,0 +1,33 @@
+# apprunner.yaml
+# AWS App Runner — simplest deployment, zero infrastructure to manage.
+# Deploys only the MCP Server and Public API (App Runner is for single services).
+# Run: aws apprunner create-service --cli-input-yaml file://apprunner.yaml
+
+# ── MCP Server ──
+# aws apprunner create-service --cli-input-yaml file://docker/apprunner-mcp.yaml
+
+ServiceName: mcp-server
+SourceConfiguration:
+  ImageRepository:
+    ImageIdentifier: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/mcp-server:latest
+    ImageRepositoryType: ECR
+    ImageConfiguration:
+      Port: "8000"
+      RuntimeEnvironmentVariables:
+        ENV: production
+        PORT: "8000"
+        LOG_LEVEL: INFO
+      RuntimeEnvironmentSecrets:
+        OPENAI_API_KEY: arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:swarm-agent/prod:OPENAI_API_KEY::
+        API_KEYS:       arn:aws:secretsmanager:us-east-1:<ACCOUNT_ID>:secret:swarm-agent/prod:API_KEYS::
+  AutoDeploymentsEnabled: true
+InstanceConfiguration:
+  Cpu: 1 vCPU
+  Memory: 2 GB
+HealthCheckConfiguration:
+  Protocol: HTTP
+  Path: /health
+  Interval: 10
+  Timeout: 5
+  HealthyThreshold: 2
+  UnhealthyThreshold: 3

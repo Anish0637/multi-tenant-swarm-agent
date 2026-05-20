@@ -1,0 +1,24 @@
+# copilot/hr-agent/manifest.yml
+name: hr-agent
+type: Worker Service
+
+image:
+  build:
+    dockerfile: docker/Dockerfile.agent
+    context: .
+
+cpu: 512
+memory: 1024
+count: 1
+
+variables:
+  ENV: production
+  AGENT_TYPE: hr
+  LOG_LEVEL: INFO
+  MCP_SERVER_URL: http://mcp-server.${COPILOT_SERVICE_DISCOVERY_ENDPOINT}:8000
+
+secrets:
+  OPENAI_API_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/OPENAI_API_KEY
+
+logging:
+  retention: 30

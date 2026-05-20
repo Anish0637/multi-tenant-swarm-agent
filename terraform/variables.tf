@@ -46,3 +46,15 @@ variable "tags" {
     Team        = "Engineering"
   }
 }
+
+variable "domain_name" {
+  description = "Root domain name (e.g. example.com). Used for ACM cert and Route53 records."
+  type        = string
+  default     = "example.com"
+}
+
+variable "project_name" {
+  description = "Short project name used in resource names"
+  type        = string
+  default     = "swarm-agent"
+}

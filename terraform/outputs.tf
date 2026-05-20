@@ -32,3 +32,33 @@ output "security_group_id" {
   description = "Security group ID"
   value       = aws_security_group.swarm_agents.id
 }
+
+output "public_url" {
+  description = "Public URL for the webapp and API"
+  value       = "https://app.${var.domain_name}"
+}
+
+output "api_url" {
+  description = "REST API base URL"
+  value       = "https://app.${var.domain_name}/api"
+}
+
+output "swagger_url" {
+  description = "Swagger UI URL"
+  value       = "https://app.${var.domain_name}/docs"
+}
+
+output "alb_dns_name" {
+  description = "Public ALB DNS name (before DNS propagation)"
+  value       = aws_lb.main.dns_name
+}
+
+output "internal_alb_dns_name" {
+  description = "Internal ALB DNS (used by agents to reach MCP server)"
+  value       = aws_lb.internal.dns_name
+}
+
+output "ecs_cluster_name" {
+  description = "ECS Cluster name"
+  value       = aws_ecs_cluster.main.name
+}

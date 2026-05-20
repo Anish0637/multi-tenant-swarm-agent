@@ -1,0 +1,70 @@
+# .github/workflows/rollback.yml
+# Manual rollback to any previous image tag.
+# Trigger: GitHub UI → Actions → Rollback → Run workflow
+
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options: [production, staging]
+      image_tag:
+        description: "Image tag (git SHA) to roll back to, e.g. a3f9c12"
+        required: true
+        type: string
+
+env:
+  AWS_REGION:     ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  ECS_CLUSTER:    swarm-agent-cluster${{ github.event.inputs.environment == 'staging' && '-staging' || '' }}
+
+jobs:
+  rollback:
+    name: Rollback ${{ github.event.inputs.environment }} → ${{ github.event.inputs.image_tag }}
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ secrets.AWS_REGION }}
+
+      - name: Verify image tag exists in ECR
+        run: |
+          TAG="${{ github.event.inputs.image_tag }}"
+          ECR_BASE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+          aws ecr describe-images \
+            --repository-name mcp-server \
+            --image-ids imageTag=$TAG \
+            --region $AWS_REGION \
+            --output text > /dev/null || { echo "❌ Tag $TAG not found in ECR"; exit 1; }
+          echo "✅ Tag $TAG confirmed in ECR"
+
+      - name: Run rollback
+        run: |
+          bash .github/scripts/deploy-ecs.sh \
+            --cluster "$ECS_CLUSTER" \
+            --env     "${{ github.event.inputs.environment }}" \
+            --tag     "${{ github.event.inputs.image_tag }}"
+
+      - name: Smoke test after rollback
+        run: |
+          if [[ "${{ github.event.inputs.environment }}" == "production" ]]; then
+            ALB_NAME="swarm-agent-alb"
+          else
+            ALB_NAME="swarm-agent-alb-staging"
+          fi
+          ALB_DNS=$(aws elbv2 describe-load-balancers \
+            --names "$ALB_NAME" \
+            --query 'LoadBalancers[0].DNSName' \
+            --output text)
+          bash .github/scripts/smoke-test.sh "http://$ALB_DNS"

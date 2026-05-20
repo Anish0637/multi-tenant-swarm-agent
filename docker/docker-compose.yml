@@ -1,12 +1,10 @@
-version: '3.9'
-
 services:
   mcp-server:
     build:
-      context: .
+      context: ..
       dockerfile: docker/Dockerfile.mcp
     ports:
-      - "8000:8000"
+      - "9000:8000"
     environment:
       - ENV=development
       - DEBUG=true
@@ -21,10 +19,10 @@ services:
 
   supervisor-agent:
     build:
-      context: .
+      context: ..
       dockerfile: docker/Dockerfile.agent
     ports:
-      - "8001:8001"
+      - "9001:8001"
     environment:
       - ENV=development
       - DEBUG=true
@@ -42,7 +40,7 @@ services:
 
   hr-agent:
     build:
-      context: .
+      context: ..
       dockerfile: docker/Dockerfile.agent
     environment:
       - ENV=development
@@ -56,7 +54,7 @@ services:
 
   finance-agent:
     build:
-      context: .
+      context: ..
       dockerfile: docker/Dockerfile.agent
     environment:
       - ENV=development
@@ -70,7 +68,7 @@ services:
 
   medical-agent:
     build:
-      context: .
+      context: ..
       dockerfile: docker/Dockerfile.agent
     environment:
       - ENV=development
