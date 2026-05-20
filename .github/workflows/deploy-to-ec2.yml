@@ -1,0 +1,69 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsRole
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Get EC2 instances
+      id: get-instances
+      run: |
+        INSTANCES=$(aws ec2 describe-instances \
+          --filters "Name=tag:Name,Values=swarm-agent-*" "Name=instance-state-name,Values=running" \
+          --query 'Reservations[*].Instances[*].PublicIpAddress' \
+          --output text)
+        echo "instances=$(echo $INSTANCES | tr ' ' ',')" >> $GITHUB_OUTPUT
+    
+    - name: Deploy to EC2 instances
+      run: |
+        IPS="${{ steps.get-instances.outputs.instances }}"
+        for IP in ${IPS//,/ }; do
+          echo "Deploying to $IP..."
+          ssh -o StrictHostKeyChecking=no -i ${{ secrets.EC2_PRIVATE_KEY }} ec2-user@$IP <<'EOF'
+            aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+            docker pull ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/multi-tenant-swarm-agent:latest
+            docker stop swarm-agent || true
+            docker rm swarm-agent || true
+            docker run -d \
+              -p 8000:8000 \
+              -p 8001:8001 \
+              -e AWS_REGION=us-east-1 \
+              --name swarm-agent \
+              --restart always \
+              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com/multi-tenant-swarm-agent:latest
+          EOF
+        done
+    
+    - name: Health check
+      run: |
+        IPS="${{ steps.get-instances.outputs.instances }}"
+        for IP in ${IPS//,/ }; do
+          echo "Health checking $IP..."
+          for i in {1..30}; do
+            if curl -f http://$IP:8000/health; then
+              echo "Instance $IP is healthy"
+              break
+            fi
+            echo "Attempt $i/30 waiting for instance..."
+            sleep 5
+          done
+        done

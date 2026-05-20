@@ -1,0 +1,87 @@
+version: '3.9'
+
+services:
+  mcp-server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.mcp
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+    networks:
+      - swarm-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  supervisor-agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent
+    ports:
+      - "8001:8001"
+    environment:
+      - ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - AGENT_TYPE=supervisor
+    networks:
+      - swarm-network
+    depends_on:
+      - mcp-server
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  hr-agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent
+    environment:
+      - ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - AGENT_TYPE=hr
+    networks:
+      - swarm-network
+    depends_on:
+      - mcp-server
+
+  finance-agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent
+    environment:
+      - ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - AGENT_TYPE=finance
+    networks:
+      - swarm-network
+    depends_on:
+      - mcp-server
+
+  medical-agent:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.agent
+    environment:
+      - ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=DEBUG
+      - AGENT_TYPE=medical
+    networks:
+      - swarm-network
+    depends_on:
+      - mcp-server
+
+networks:
+  swarm-network:
+    driver: bridge
