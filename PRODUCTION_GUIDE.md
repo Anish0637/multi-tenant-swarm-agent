@@ -8,7 +8,7 @@
 
 Your code has been **upgraded from prototype to production-grade AWS deployment**. The system now includes:
 
-- ✅ **LangGraph workflows** for all agents (replaced custom event loops)
+- ✅ *LangGraph workflows** for all agents (replaced custom event loops)
 - ✅ **FastAPI + MCP** with security, rate limiting, and tracing
 - ✅ **AWS integration** (X-Ray, CloudWatch, DynamoDB, ElastiCache)
 - ✅ **Structured logging** with CloudWatch JSON format
