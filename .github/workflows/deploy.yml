@@ -258,7 +258,7 @@ jobs:
           bash .github/scripts/smoke-test.sh "http://$ALB_DNS"
 
       - name: Notify Slack on success
-        if: success() && secrets.SLACK_WEBHOOK_URL != ''
+        if: success() && env.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v1.26.0
         with:
           payload: |
@@ -269,7 +269,7 @@ jobs:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 
       - name: Notify Slack on failure
-        if: failure() && secrets.SLACK_WEBHOOK_URL != ''
+        if: failure() && env.SLACK_WEBHOOK_URL != ''
         uses: slackapi/slack-github-action@v1.26.0
         with:
           payload: |
