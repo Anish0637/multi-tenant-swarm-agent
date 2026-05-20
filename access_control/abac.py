@@ -221,12 +221,18 @@ class ABACEnforcer:
         for key, value in condition.items():
             if key.startswith("subject."):
                 attr_name = key.split(".")[1]
-                subject_value = subject.attributes.get(attr_name)
+                # Check direct model field first, then attributes dict
+                subject_value = getattr(subject, attr_name, None)
+                if subject_value is None:
+                    subject_value = subject.attributes.get(attr_name)
                 if not self._compare_values(subject_value, value):
                     return False
             elif key.startswith("resource."):
                 attr_name = key.split(".")[1]
-                resource_value = resource.attributes.get(attr_name)
+                # Check direct model field first, then attributes dict
+                resource_value = getattr(resource, attr_name, None)
+                if resource_value is None:
+                    resource_value = resource.attributes.get(attr_name)
                 if not self._compare_values(resource_value, value):
                     return False
         return True

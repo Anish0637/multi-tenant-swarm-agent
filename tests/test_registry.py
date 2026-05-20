@@ -3,11 +3,12 @@ Test registry service functionality.
 """
 
 import pytest
+import pytest_asyncio
 from datetime import datetime, timedelta
 from registry import ServiceRegistry
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def registry():
     """Create registry for testing"""
     return ServiceRegistry(heartbeat_timeout=30)
