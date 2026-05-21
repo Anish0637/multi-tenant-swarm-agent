@@ -6,7 +6,7 @@ ResponseFormatter — agent result dict + user message → natural language answ
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from agents.bedrock_client import BedrockClient
 
@@ -120,9 +120,11 @@ class ResponseFormatter:
         domain: str,
         task_type: str,
         kb_context: str = "",
+        conversation_history: Optional[List[Dict[str, str]]] = None,
     ) -> str:
         """
         Return a human-readable response string.
+        Passes prior conversation turns to Bedrock for context-aware replies.
         Never raises — returns a plain-English fallback on any error.
         """
         context_block = f"\nRelevant policy/knowledge context:\n{kb_context}\n" if kb_context else ""
@@ -132,7 +134,16 @@ class ResponseFormatter:
             f"Agent result: {agent_result}{context_block}\n"
             "Write a helpful response to the user."
         )
+        history = conversation_history or []
         try:
+            if history:
+                return self._bedrock.invoke_with_history(
+                    history=history,
+                    user=user_prompt,
+                    system=_FORMAT_SYSTEM,
+                    max_tokens=512,
+                    temperature=0.3,
+                )
             return self._bedrock.invoke(
                 system=_FORMAT_SYSTEM,
                 user=user_prompt,

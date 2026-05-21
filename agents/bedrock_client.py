@@ -13,7 +13,7 @@ import json
 import logging
 import os
 import re
-from typing import List, Optional
+from typing import Dict, Iterator, List, Optional
 
 import boto3
 from botocore.exceptions import ClientError
@@ -89,8 +89,7 @@ class BedrockClient:
         user: str,
         system: str = "",
         max_tokens: int = 1024,
-    ) -> dict:
-        """
+    ) -> dict:        """
         Like invoke() but parses the first JSON object from the response.
         Returns an empty dict on parse failure.
         """
@@ -151,6 +150,76 @@ class BedrockClient:
         except ClientError as exc:
             logger.warning("KB retrieve_and_generate failed: %s", exc)
             return ""
+
+    # ── Multi-turn & streaming ────────────────────────────────────────────────
+
+    def invoke_with_history(
+        self,
+        history: List[Dict[str, str]],
+        user: str,
+        system: str = "",
+        max_tokens: int = 1024,
+        temperature: float = 0.0,
+    ) -> str:
+        """
+        Multi-turn invocation via Bedrock Converse API.
+
+        history: list of {role: "user"|"assistant", content: "<text>"}
+        The current user turn is appended automatically.
+        Returns the assistant reply text.
+        """
+        messages = [
+            {"role": m["role"], "content": [{"text": m["content"]}]}
+            for m in history
+        ]
+        messages.append({"role": "user", "content": [{"text": user}]})
+        kwargs: dict = {
+            "modelId": self.model_id,
+            "messages": messages,
+            "inferenceConfig": {"maxTokens": max_tokens, "temperature": temperature},
+        }
+        if system:
+            kwargs["system"] = [{"text": system}]
+        try:
+            response = self._runtime.converse(**kwargs)
+            return response["output"]["message"]["content"][0]["text"]
+        except ClientError as exc:
+            logger.error("Bedrock converse_with_history failed: %s", exc)
+            raise
+
+    def invoke_stream_with_history(
+        self,
+        history: List[Dict[str, str]],
+        user: str,
+        system: str = "",
+        max_tokens: int = 1024,
+    ) -> Iterator[str]:
+        """
+        Streaming multi-turn invocation via Bedrock ConverseStream API.
+        Yields text chunks as they arrive from the model.
+        """
+        messages = [
+            {"role": m["role"], "content": [{"text": m["content"]}]}
+            for m in history
+        ]
+        messages.append({"role": "user", "content": [{"text": user}]})
+        kwargs: dict = {
+            "modelId": self.model_id,
+            "messages": messages,
+            "inferenceConfig": {"maxTokens": max_tokens, "temperature": 0.0},
+        }
+        if system:
+            kwargs["system"] = [{"text": system}]
+        try:
+            response = self._runtime.converse_stream(**kwargs)
+            for event in response.get("stream", []):
+                if "contentBlockDelta" in event:
+                    delta = event["contentBlockDelta"].get("delta", {})
+                    if "text" in delta:
+                        yield delta["text"]
+        except ClientError as exc:
+            logger.error("Bedrock converse_stream failed: %s", exc)
+            raise
 
 
 # Module-level singleton — created lazily on first use

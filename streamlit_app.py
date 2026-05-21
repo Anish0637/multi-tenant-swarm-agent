@@ -30,15 +30,21 @@ st.markdown("""
 
 # Config
 import os
+import uuid
 from config.production import get_app_config as _get_app_config
 MCP_SERVER_URL = _get_app_config().mcp_server_url
+INTERNAL_API_KEY = os.getenv("MCP_INTERNAL_API_KEY", "")
+_ENV = os.getenv("ENV", "development")
 TIMEOUT = 10
+_AUTH_HEADERS = {"X-API-Key": INTERNAL_API_KEY} if INTERNAL_API_KEY else {}
 
 # Session state
 if 'tasks_submitted' not in st.session_state:
     st.session_state.tasks_submitted = []
 if 'chat_history' not in st.session_state:
     st.session_state.chat_history = []
+if 'conversation_id' not in st.session_state:
+    st.session_state.conversation_id = str(uuid.uuid4())
 
 # Helper functions
 def make_request(tool_name: str, parameters: Dict[str, Any], tool_id: str = "req-001") -> Dict:
@@ -51,7 +57,7 @@ def make_request(tool_name: str, parameters: Dict[str, Any], tool_id: str = "req
             "parameters": parameters,
             "context": {}
         }
-        response = requests.post(url, json=payload, timeout=TIMEOUT)
+        response = requests.post(url, json=payload, headers=_AUTH_HEADERS, timeout=TIMEOUT)
         response.raise_for_status()
         return response.json()
     except requests.exceptions.ConnectionError:
@@ -64,7 +70,7 @@ def make_request(tool_name: str, parameters: Dict[str, Any], tool_id: str = "req
 def check_health() -> bool:
     """Check if MCP server is healthy"""
     try:
-        response = requests.get(f"{MCP_SERVER_URL}/health", timeout=5)
+        response = requests.get(f"{MCP_SERVER_URL}/health", headers=_AUTH_HEADERS, timeout=5)
         return response.status_code == 200
     except:
         return False
@@ -129,7 +135,8 @@ with col2:
     st.metric("MCP Server", "Port 9000", "Active" if health else "Inactive")
 
 with col3:
-    st.metric("Environment", "Development", "Running")
+    env_label = _ENV.capitalize()
+    st.metric("Environment", env_label, "Running" if health else "Offline")
 
 st.markdown("---")
 
@@ -139,12 +146,20 @@ tab0, tab1, tab2, tab3, tab4 = st.tabs(["💬 Chat", "📊 Dashboard", "➕ Subm
 # TAB 0: Chat
 with tab0:
     st.subheader("Ask anything — HR, Finance, or Medical")
-    st.caption("Powered by AWS Bedrock · Claude 3.5 Haiku · OpenSearch Knowledge Base")
+    st.caption("Powered by AWS Bedrock · Nova 2 Lite · Persistent conversation memory (DynamoDB)")
 
-    # Sidebar inputs for chat context
-    with st.expander("⚙️ Chat settings", expanded=False):
-        chat_tenant = st.text_input("Tenant ID", value="default", key="chat_tenant")
-        chat_user = st.text_input("User ID", value="user", key="chat_user")
+    # Conversation controls
+    ctrl_col1, ctrl_col2 = st.columns([3, 1])
+    with ctrl_col1:
+        with st.expander("⚙️ Chat settings", expanded=False):
+            chat_tenant = st.text_input("Tenant ID", value="default", key="chat_tenant")
+            chat_user = st.text_input("User ID", value="user", key="chat_user")
+            st.caption(f"💬 Conversation ID: `{st.session_state.conversation_id}`")
+    with ctrl_col2:
+        if st.button("🆕 New conversation", use_container_width=True):
+            st.session_state.conversation_id = str(uuid.uuid4())
+            st.session_state.chat_history = []
+            st.rerun()
 
     # Display chat history
     chat_container = st.container()
@@ -168,38 +183,82 @@ with tab0:
 
     # Chat input
     if prompt := st.chat_input("Type your question here… e.g. 'I need 3 days leave next week'"):
-        # Show user message immediately
         st.session_state.chat_history.append({"role": "user", "content": prompt, "meta": {}})
 
-        with st.spinner("Thinking…"):
-            try:
-                resp = requests.post(
-                    f"{MCP_SERVER_URL}/chat",
-                    json={
-                        "message": prompt,
-                        "tenant_id": st.session_state.get("chat_tenant", "default"),
-                        "user_id": st.session_state.get("chat_user", "user"),
-                    },
-                    timeout=30,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                answer = data.get("response", "No response from agent.")
-                meta = {
-                    "agent_used": data.get("agent_used"),
-                    "task_type": data.get("task_type"),
-                    "confidence": data.get("confidence"),
-                    "status": data.get("status"),
-                }
-            except requests.exceptions.ConnectionError:
-                answer = "⚠️ Cannot connect to the MCP server. Is it running on `{}`?".format(MCP_SERVER_URL)
-                meta = {}
-            except Exception as e:
-                answer = f"⚠️ Error: {e}"
-                meta = {}
+        with st.chat_message("assistant"):
+            placeholder = st.empty()
+            full_response = ""
+            meta = {}
 
-        st.session_state.chat_history.append({"role": "assistant", "content": answer, "meta": meta})
-        st.rerun()
+            try:
+                # Use streaming endpoint for real-time token display
+                stream_url = f"{MCP_SERVER_URL}/chat/stream"
+                params = {
+                    "message": prompt,
+                    "tenant_id": st.session_state.get("chat_tenant", "default"),
+                    "user_id": st.session_state.get("chat_user", "user"),
+                    "conversation_id": st.session_state.conversation_id,
+                }
+                with requests.get(
+                    stream_url,
+                    params=params,
+                    headers=_AUTH_HEADERS,
+                    stream=True,
+                    timeout=60,
+                ) as resp:
+                    if resp.status_code == 401:
+                        full_response = "⚠️ Authentication failed — MCP_INTERNAL_API_KEY not configured in this environment."
+                    elif resp.status_code != 200:
+                        # Fallback to non-streaming /chat if stream unavailable
+                        raise requests.exceptions.HTTPError(f"Stream returned {resp.status_code}")
+                    else:
+                        for line in resp.iter_lines():
+                            if line:
+                                decoded = line.decode("utf-8")
+                                if decoded.startswith("data: "):
+                                    try:
+                                        event = json.loads(decoded[6:])
+                                        if event.get("done"):
+                                            break
+                                        chunk = event.get("chunk", "")
+                                        full_response += chunk
+                                        placeholder.markdown(full_response + "▮")
+                                    except json.JSONDecodeError:
+                                        pass
+                        placeholder.markdown(full_response)
+
+            except (requests.exceptions.HTTPError, requests.exceptions.ConnectionError):
+                # Fallback: non-streaming /chat endpoint
+                try:
+                    resp2 = requests.post(
+                        f"{MCP_SERVER_URL}/chat",
+                        json={
+                            "message": prompt,
+                            "tenant_id": st.session_state.get("chat_tenant", "default"),
+                            "user_id": st.session_state.get("chat_user", "user"),
+                            "conversation_id": st.session_state.conversation_id,
+                        },
+                        headers=_AUTH_HEADERS,
+                        timeout=60,
+                    )
+                    resp2.raise_for_status()
+                    data = resp2.json()
+                    full_response = data.get("response", "No response from agent.")
+                    meta = {
+                        "agent_used": data.get("agent_used"),
+                        "task_type": data.get("task_type"),
+                        "confidence": data.get("confidence"),
+                        "status": data.get("status"),
+                    }
+                    placeholder.markdown(full_response)
+                except Exception as e2:
+                    full_response = f"⚠️ Error: {e2}"
+                    placeholder.markdown(full_response)
+            except Exception as e:
+                full_response = f"⚠️ Error: {e}"
+                placeholder.markdown(full_response)
+
+        st.session_state.chat_history.append({"role": "assistant", "content": full_response, "meta": meta})
 
     # Clear chat button
     if st.session_state.chat_history:

@@ -7,7 +7,7 @@ AgentGraphState so that graphs can be composed and tested uniformly.
 
 import uuid
 from datetime import datetime
-from typing import Any, Dict, Optional, TypedDict
+from typing import Any, Dict, List, Optional, TypedDict
 
 from agents.base_agent import TaskRequest, TaskResult
 
@@ -38,6 +38,7 @@ class AgentGraphState(TypedDict):
     formatted_response: Optional[str]   # LLM-generated natural-language reply
     intent_confidence: Optional[float]  # 0.0-1.0 classifier confidence score
     kb_context: Optional[str]           # retrieved Knowledge Base context chunks
+    conversation_history: Optional[List[Dict[str, str]]]  # prior turns [{role, content}, ...]
 
 
 def state_from_task(task: TaskRequest) -> AgentGraphState:
@@ -62,6 +63,7 @@ def state_from_task(task: TaskRequest) -> AgentGraphState:
         formatted_response=None,
         intent_confidence=None,
         kb_context=None,
+        conversation_history=ctx.get("conversation_history"),
     )
 
 

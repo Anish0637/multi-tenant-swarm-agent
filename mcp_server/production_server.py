@@ -11,15 +11,16 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
+from agents.conversation_store import ConversationStore
 from config.logging_config import get_logger
 from config.production import get_app_config, get_security_config
 
@@ -32,6 +33,16 @@ except ImportError:
 
 
 logger = get_logger("mcp-server")
+
+# ── Valid API keys (parsed from env at startup, not from broken SecurityConfig dict) ──
+_raw_keys = os.getenv("API_KEYS", "")
+_internal_key = os.getenv("MCP_INTERNAL_API_KEY", "")
+_VALID_KEYS: set = {k.strip() for k in _raw_keys.split(",") if k.strip()}
+if _internal_key:
+    _VALID_KEYS.add(_internal_key)
+
+# ── Module-level conversation store singleton ─────────────────────────────────
+_conv_store = ConversationStore()
 
 
 # ==================== Models ====================
@@ -82,6 +93,7 @@ class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4096)
     tenant_id: str = Field(default="default")
     user_id: str = Field(default="user")
+    conversation_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
     correlation_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
 
     @field_validator("message", mode="before")
@@ -100,6 +112,7 @@ class ChatResponse(BaseModel):
     task_type: Optional[str] = None
     confidence: Optional[float] = None
     status: str
+    conversation_id: Optional[str] = None
     correlation_id: Optional[str] = None
 
 
@@ -129,7 +142,7 @@ limiter = Limiter(key_func=get_remote_address)
 
 # Authentication dependency
 async def verify_api_key(x_api_key: Optional[str] = Header(None)) -> Dict[str, Any]:
-    """Verify API key"""
+    """Verify API key against env-var-configured valid keys."""
     security_config = get_security_config()
 
     if not security_config.api_key_enabled:
@@ -138,8 +151,9 @@ async def verify_api_key(x_api_key: Optional[str] = Header(None)) -> Dict[str, A
     if not x_api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required")
 
-    # In production, validate against a database/secret store
-    if x_api_key not in security_config.api_keys.values():
+    # _VALID_KEYS is empty only when no API_KEYS / MCP_INTERNAL_API_KEY is configured
+    # (e.g. local dev without any env vars) — allow in that case to avoid locking out devs
+    if _VALID_KEYS and x_api_key not in _VALID_KEYS:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
     return {"authenticated": True, "api_key": x_api_key}
@@ -401,15 +415,16 @@ class ProductionMCPServer:
             auth: Dict = Depends(verify_api_key),
         ):
             """
-            Autonomous free-text chat endpoint.
+            Autonomous free-text chat endpoint with persistent conversation memory.
 
             Workflow:
-              1. Wrap user message in a TaskRequest with task_type="chat"
-              2. SupervisorAgent._classify_intent() calls Bedrock to extract
-                 domain / task_type / payload from the message
-              3. The resolved domain agent processes the structured request
-              4. SupervisorAgent._format_response() calls Bedrock to produce a
-                 natural-language reply
+              1. Load prior turns from DynamoDB (ConversationStore)
+              2. Wrap message + history in TaskRequest with task_type="chat"
+              3. SupervisorAgent._classify_intent() extracts domain/task_type/payload
+              4. Domain agent processes the structured request
+              5. SupervisorAgent._format_response() generates the natural-language reply
+                 using the full conversation history for context
+              6. Save both user + assistant turns back to DynamoDB
             """
             from agents.finance_agent import FinanceAgent
             from agents.hr_agent import HRAgent
@@ -418,10 +433,19 @@ class ProductionMCPServer:
             from agents.base_agent import TaskRequest as TR
 
             start = time.time()
+            conv_id = chat_request.conversation_id or str(uuid.uuid4())
+
             logger.info(
                 "Chat request received",
-                extra={"user_id": chat_request.user_id, "correlation_id": chat_request.correlation_id},
+                extra={
+                    "user_id": chat_request.user_id,
+                    "conversation_id": conv_id,
+                    "correlation_id": chat_request.correlation_id,
+                },
             )
+
+            # Load conversation history before processing
+            history = _conv_store.load(conv_id)
 
             try:
                 supervisor = SupervisorAgent(
@@ -440,6 +464,7 @@ class ProductionMCPServer:
                     context={
                         "user_message": chat_request.message,
                         "correlation_id": chat_request.correlation_id,
+                        "conversation_history": history,
                     },
                 )
 
@@ -452,12 +477,25 @@ class ProductionMCPServer:
                 else:
                     formatted = result.error or "Unable to process your request."
 
+                # Persist both turns to DynamoDB
+                _conv_store.append(conv_id, "user", chat_request.message)
+                _conv_store.append(
+                    conv_id,
+                    "assistant",
+                    formatted,
+                    metadata={
+                        "agent_used": result.metadata.get("routed_to"),
+                        "task_type": result.metadata.get("domain"),
+                    },
+                )
+
                 logger.info(
                     "Chat request completed",
                     extra={
                         "status": result.status,
                         "execution_ms": (time.time() - start) * 1000,
                         "agent_used": result.metadata.get("routed_to"),
+                        "conversation_id": conv_id,
                     },
                 )
 
@@ -467,6 +505,7 @@ class ProductionMCPServer:
                     task_type=result.metadata.get("domain"),
                     confidence=result.result.get("intent_confidence") if result.result else None,
                     status=result.status,
+                    conversation_id=conv_id,
                     correlation_id=chat_request.correlation_id,
                 )
 
@@ -476,6 +515,103 @@ class ProductionMCPServer:
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Chat processing failed",
                 )
+
+        @app.get("/chat/stream")
+        @limiter.limit("60/minute")
+        async def chat_stream(
+            request: Request,
+            message: str = Query(..., min_length=1, max_length=4096),
+            tenant_id: str = Query(default="default"),
+            user_id: str = Query(default="user"),
+            conversation_id: Optional[str] = Query(default=None),
+            auth: Dict = Depends(verify_api_key),
+        ):
+            """
+            Streaming chat endpoint (SSE).
+
+            Runs the full classify → route → agent pipeline, then streams
+            the Bedrock format_response call token-by-token as SSE events.
+
+            Events:
+              data: <text chunk>
+              data: [DONE]
+            """
+            from agents.bedrock_client import get_bedrock_client
+            from agents.capability_registry import CapabilityRegistry
+            from agents.finance_agent import FinanceAgent
+            from agents.hr_agent import HRAgent
+            from agents.intent_classifier import IntentClassifier, ResponseFormatter, _FORMAT_SYSTEM
+            from agents.medical_agent import MedicalAgent
+            from agents.supervisor import SupervisorAgent
+            from agents.base_agent import TaskRequest as TR
+
+            conv_id = conversation_id or str(uuid.uuid4())
+            history = _conv_store.load(conv_id)
+            clean_message = message.strip()
+
+            async def event_generator() -> AsyncIterator[str]:
+                bedrock = get_bedrock_client()
+                classifier = IntentClassifier(bedrock)
+
+                # 1. Classify intent
+                intent = classifier.classify(clean_message)
+                domain = intent.get("domain", "hr")
+                task_type = intent.get("task_type", "employee_data")
+                payload = intent.get("payload", {})
+
+                # 2. Route to sub-agent
+                supervisor = SupervisorAgent(use_bedrock=False)  # skip double-Bedrock in stream mode
+                supervisor.register_sub_agent(HRAgent(tenant_id=tenant_id))
+                supervisor.register_sub_agent(FinanceAgent(tenant_id=tenant_id))
+                supervisor.register_sub_agent(MedicalAgent(tenant_id=tenant_id))
+
+                task = TR(
+                    tenant_id=tenant_id,
+                    task_type=task_type,
+                    payload=payload,
+                    user_id=user_id,
+                    context={"agent_type": domain},
+                )
+                result = await supervisor.handle_task(task)
+                agent_result = result.result or {}
+
+                # 3. Stream format_response using Bedrock ConverseStream
+                kb_context = ""
+                context_block = f"\nRelevant context:\n{kb_context}\n" if kb_context else ""
+                user_prompt = (
+                    f"Original user request: {clean_message}\n"
+                    f"Agent domain: {domain}, task type: {task_type}\n"
+                    f"Agent result: {agent_result}{context_block}\n"
+                    "Write a helpful response to the user."
+                )
+
+                full_response = ""
+                try:
+                    for chunk in bedrock.invoke_stream_with_history(
+                        history=history,
+                        user=user_prompt,
+                        system=_FORMAT_SYSTEM,
+                        max_tokens=512,
+                    ):
+                        full_response += chunk
+                        yield f"data: {json.dumps({'chunk': chunk, 'conversation_id': conv_id})}\n\n"
+                except Exception as exc:
+                    logger.error("Stream format_response failed: %s", exc)
+                    fallback = f"Your {task_type.replace('_', ' ')} request has been processed."
+                    full_response = fallback
+                    yield f"data: {json.dumps({'chunk': fallback, 'conversation_id': conv_id})}\n\n"
+
+                # 4. Persist turns
+                _conv_store.append(conv_id, "user", clean_message)
+                _conv_store.append(conv_id, "assistant", full_response)
+
+                yield f"data: {json.dumps({'done': True, 'conversation_id': conv_id})}\n\n"
+
+            return StreamingResponse(
+                event_generator(),
+                media_type="text/event-stream",
+                headers={"Cache-Control": "no-cache", "X-Conversation-Id": conv_id},
+            )
 
     async def _global_exception_handler(self, request: Request, exc: Exception):
         """Global exception handler"""

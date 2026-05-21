@@ -99,12 +99,14 @@ print(f'   desired={d[\"desiredCount\"]}  running={d[\"runningCount\"]}  status=
 }
 
 # ── Deploy each service ──────────────────────────────────────────────────────
-# Build env-var override JSON for public-api (injected from CI secrets)
+# Env-var overrides injected from CI secrets
 PUBLIC_API_ENV="{\"MCP_INTERNAL_API_KEY\":\"${MCP_INTERNAL_API_KEY:-}\",\"API_KEYS\":\"${API_KEYS:-}\"}"
+MCP_SERVER_ENV="{\"MCP_INTERNAL_API_KEY\":\"${MCP_INTERNAL_API_KEY:-}\",\"API_KEYS\":\"${API_KEYS:-}\"}"
+WEBAPP_ENV="{\"MCP_INTERNAL_API_KEY\":\"${MCP_INTERNAL_API_KEY:-}\"}"
 
-deploy_service "mcp-server"      "mcp-server"     "$ECR_BASE/mcp-server:$TAG"                        "mcp-server"
-deploy_service "public-api"      "public-api"     "$ECR_BASE/multi-tenant-swarm-agent:api-$TAG"      "public-api"  "$PUBLIC_API_ENV"
-deploy_service "webapp"          "webapp"         "$ECR_BASE/multi-tenant-swarm-agent:webapp-$TAG"   "webapp"
+deploy_service "mcp-server"      "mcp-server"     "$ECR_BASE/mcp-server:$TAG"                        "mcp-server"   "$MCP_SERVER_ENV"
+deploy_service "public-api"      "public-api"     "$ECR_BASE/multi-tenant-swarm-agent:api-$TAG"      "public-api"   "$PUBLIC_API_ENV"
+deploy_service "webapp"          "webapp"         "$ECR_BASE/multi-tenant-swarm-agent:webapp-$TAG"   "webapp"       "$WEBAPP_ENV"
 deploy_service "hr-agent"        "hr-agent"       "$ECR_BASE/multi-tenant-swarm-agent:$TAG"          "hr-agent"
 deploy_service "finance-agent"   "finance-agent"  "$ECR_BASE/multi-tenant-swarm-agent:$TAG"          "finance-agent"
 deploy_service "medical-agent"   "medical-agent"  "$ECR_BASE/multi-tenant-swarm-agent:$TAG"          "medical-agent"

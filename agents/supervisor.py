@@ -256,6 +256,7 @@ class SupervisorAgent(BaseAgent):
                 domain=domain,
                 task_type=state.get("task_type", ""),
                 kb_context=state.get("kb_context") or "",
+                conversation_history=state.get("conversation_history") or [],
             )
             # Also embed in result so the caller can find it without knowing the field
             if state.get("result") is not None:
