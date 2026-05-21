@@ -19,6 +19,7 @@ RUN mkdir -p /app/logs
 
 # Copy application code
 COPY mcp_server/ mcp_server/
+COPY agents/ agents/
 COPY registry/ registry/
 COPY access_control/ access_control/
 COPY config/ config/
