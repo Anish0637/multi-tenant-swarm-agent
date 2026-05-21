@@ -151,9 +151,11 @@ async def verify_api_key(x_api_key: Optional[str] = Header(None)) -> Dict[str, A
     if not x_api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key required")
 
-    # _VALID_KEYS is empty only when no API_KEYS / MCP_INTERNAL_API_KEY is configured
-    # (e.g. local dev without any env vars) — allow in that case to avoid locking out devs
-    if _VALID_KEYS and x_api_key not in _VALID_KEYS:
+    # Build the effective set of valid keys: prefer module-level env-var keys,
+    # fall back to SecurityConfig.api_keys values (used in tests / dynamic config).
+    effective_keys: set = _VALID_KEYS or set(security_config.api_keys.values())
+    # If still empty (truly unconfigured local dev), allow all to avoid lockout.
+    if effective_keys and x_api_key not in effective_keys:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
     return {"authenticated": True, "api_key": x_api_key}
