@@ -80,14 +80,35 @@ def get_agent_status(agent_id: str) -> Dict:
 
 def submit_task(agent_id: str, task_type: str, payload: Dict) -> Dict:
     """Submit a task to an agent"""
+    # MCP handler expects 'agent_type' (e.g. 'finance'), not 'agent_id' ('finance_agent')
+    agent_type = agent_id.replace("_agent", "") if agent_id.endswith("_agent") else agent_id
+
+    # Map UI-friendly names to the task types the agents actually support
+    _TASK_TYPE_MAP = {
+        # HR
+        "employee_onboarding": "employee_data",
+        "leave_request": "process_leave",
+        "performance_review": "employee_data",
+        # Finance
+        "expense_report": "expense",
+        "budget_planning": "budget",
+        "invoice_processing": "invoice",
+        # Medical
+        "appointment_scheduling": "appointment",
+        "patient_records": "patient_data",
+        "prescription_management": "patient_data",
+    }
+    mapped_task_type = _TASK_TYPE_MAP.get(task_type, task_type)
+
     return make_request(
         "submit_task",
         {
-            "agent_id": agent_id,
-            "task_type": task_type,
-            "payload": payload
+            "agent_type": agent_type,
+            "task_type": mapped_task_type,
+            "payload": payload,
+            "tenant_id": "tenant-1",
         },
-        tool_id=f"task-{datetime.now().timestamp()}"
+        tool_id=f"task-{datetime.now().timestamp()}",
     )
 
 # Header
@@ -286,8 +307,11 @@ with tab2:
             st.session_state.tasks_submitted.append(task_record)
             
             # Display result
-            if "error" in result:
+            if result.get("error"):
                 st.error(f"Error: {result['error']}")
+            elif result.get("result", {}).get("status") in ("error", "unsupported"):
+                inner = result["result"]
+                st.error(f"Agent error: {inner.get('error', inner.get('status'))}")
             else:
                 st.success("Task submitted successfully!")
                 st.json(result)
