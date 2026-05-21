@@ -3,14 +3,16 @@ MCP Server main entry point for running as a module.
 """
 
 import logging
+
 import uvicorn
+
+from agents.base_agent import TaskRequest
+from agents.finance_agent import FinanceAgent
+from agents.hr_agent import HRAgent
+from agents.medical_agent import MedicalAgent
 from config.logging_config import setup_logging
 from config.production import get_app_config
 from mcp_server.production_server import ProductionMCPServer, ToolSchema
-from agents.base_agent import TaskRequest
-from agents.hr_agent import HRAgent
-from agents.finance_agent import FinanceAgent
-from agents.medical_agent import MedicalAgent
 
 # Setup logging
 logger = setup_logging("mcp-server")
@@ -47,10 +49,7 @@ if __name__ == "__main__":
     app_config = get_app_config()
 
     # Create production MCP server instance
-    mcp = ProductionMCPServer(
-        host=app_config.mcp_server_host,
-        port=app_config.mcp_server_port
-    )
+    mcp = ProductionMCPServer(host=app_config.mcp_server_host, port=app_config.mcp_server_port)
 
     # Register the submit_task tool used by public-api
     mcp.register_tool(
@@ -75,14 +74,11 @@ if __name__ == "__main__":
 
     # Run with uvicorn
     # workers > 1 requires an import string, not a direct app object; use 1 worker here
-    logger.info(
-        f"Starting Production MCP Server on "
-        f"{app_config.mcp_server_host}:{app_config.mcp_server_port}"
-    )
+    logger.info(f"Starting Production MCP Server on " f"{app_config.mcp_server_host}:{app_config.mcp_server_port}")
     uvicorn.run(
         mcp.app,
         host=app_config.mcp_server_host,
         port=app_config.mcp_server_port,
         workers=1,
-        log_level=app_config.log_level.lower()
+        log_level=app_config.log_level.lower(),
     )

@@ -23,9 +23,9 @@ jobs:
 
     - name: Check formatting with black
       run: black --check agents/ mcp_server/ registry/ access_control/ tests/
-    
+
     - name: Check imports with isort
-      run: isort --check-only agents/ mcp_server/ registry/ access_control/ tests/
-    
+      run: isort --profile black --check-only agents/ mcp_server/ registry/ access_control/ tests/
+
     - name: Lint with flake8
-      run: flake8 agents/ mcp_server/ registry/ access_control/ tests/ --max-line-length=127
+      run: flake8 agents/ mcp_server/ registry/ access_control/ tests/ --max-line-length=120 --extend-ignore=E203,W503

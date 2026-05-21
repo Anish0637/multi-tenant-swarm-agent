@@ -12,9 +12,10 @@ import os
 import time
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional, TypedDict, Annotated
+from typing import Annotated, Any, Dict, List, Optional, TypedDict
 
 from langgraph.graph import END, START, StateGraph
+
 try:
     from langchain_core.tools import BaseTool as Tool
 except ImportError:
@@ -24,54 +25,58 @@ from pydantic import BaseModel, Field
 
 from config.logging_config import get_logger
 
-
 logger = get_logger(__name__)
 
 
 # ==================== State Management ====================
 
+
 class AgentState(TypedDict):
     """State schema for agent workflows."""
-    task_id:          str
-    tenant_id:        str
-    agent_id:         str
-    task_type:        str
-    payload:          Dict[str, Any]
-    priority:         int
-    user_id:          str
-    status:           str           # pending | processing | completed | failed
-    messages:         List[Dict[str, str]]
-    result:           Optional[Dict[str, Any]]
-    error:            Optional[str]
-    created_at:       str
-    updated_at:       str
+
+    task_id: str
+    tenant_id: str
+    agent_id: str
+    task_type: str
+    payload: Dict[str, Any]
+    priority: int
+    user_id: str
+    status: str  # pending | processing | completed | failed
+    messages: List[Dict[str, str]]
+    result: Optional[Dict[str, Any]]
+    error: Optional[str]
+    created_at: str
+    updated_at: str
     execution_time_ms: float
-    retry_count:      int
-    metadata:         Dict[str, Any]
+    retry_count: int
+    metadata: Dict[str, Any]
 
 
 class TaskRequest(BaseModel):
     """Task request model (production agent — separate from base_agent.TaskRequest)."""
-    task_id:    str = Field(default_factory=lambda: str(uuid.uuid4()))
-    tenant_id:  str
-    task_type:  str
-    payload:    Dict[str, Any]
-    priority:   int = Field(default=5, ge=0, le=10)
-    user_id:    str
+
+    task_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    tenant_id: str
+    task_type: str
+    payload: Dict[str, Any]
+    priority: int = Field(default=5, ge=0, le=10)
+    user_id: str
     created_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
 
 
 class TaskResult(BaseModel):
     """Task result model."""
-    task_id:          str
-    status:           str
-    result:           Dict[str, Any]
-    error:            Optional[str] = None
+
+    task_id: str
+    status: str
+    result: Dict[str, Any]
+    error: Optional[str] = None
     execution_time_ms: float
-    completed_at:     str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+    completed_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
 
 
 # ==================== LLM helper ====================
+
 
 def _build_llm(provider: str, model: str):
     """
@@ -85,8 +90,8 @@ def _build_llm(provider: str, model: str):
             return None
         try:
             from langchain_openai import ChatOpenAI
-            return ChatOpenAI(model_name=model, temperature=0.7,
-                              max_tokens=2048, request_timeout=30)
+
+            return ChatOpenAI(model_name=model, temperature=0.7, max_tokens=2048, request_timeout=30)
         except ImportError:
             logger.warning("langchain-openai not installed — using rule-based fallback")
             return None
@@ -97,8 +102,8 @@ def _build_llm(provider: str, model: str):
             return None
         try:
             from langchain_anthropic import ChatAnthropic
-            return ChatAnthropic(model=model, temperature=0.7,
-                                 max_tokens=2048, timeout=30)
+
+            return ChatAnthropic(model=model, temperature=0.7, max_tokens=2048, timeout=30)
         except ImportError:
             logger.warning("langchain-anthropic not installed — using rule-based fallback")
             return None
@@ -107,6 +112,7 @@ def _build_llm(provider: str, model: str):
 
 
 # ==================== Production Agent ====================
+
 
 class ProductionAgent:
     """
@@ -132,21 +138,25 @@ class ProductionAgent:
         tools: Optional[List[Tool]] = None,
         config: Optional[Dict[str, Any]] = None,
     ):
-        self.agent_id   = agent_id
+        self.agent_id = agent_id
         self.agent_type = agent_type
-        self.model      = model
+        self.model = model
         self.tools: List[Tool] = tools or []
-        self.config     = config or {}
-        self.logger     = get_logger(f"agent.{agent_id}")
+        self.config = config or {}
+        self.logger = get_logger(f"agent.{agent_id}")
 
         self.llm = _build_llm(llm_provider, model)
         self.workflow = self._build_workflow()
 
         self.logger.info(
             "Agent initialised",
-            extra={"agent_id": agent_id, "agent_type": agent_type,
-                   "model": model, "tools_count": len(self.tools),
-                   "llm_available": self.llm is not None},
+            extra={
+                "agent_id": agent_id,
+                "agent_type": agent_type,
+                "model": model,
+                "tools_count": len(self.tools),
+                "llm_available": self.llm is not None,
+            },
         )
 
     # ── workflow ─────────────────────────────────────────────────────────────
@@ -154,22 +164,25 @@ class ProductionAgent:
     def _build_workflow(self):
         g = StateGraph(AgentState)
 
-        g.add_node("process_task",  self._process_task_node)
-        g.add_node("reason",        self._reason_node)
+        g.add_node("process_task", self._process_task_node)
+        g.add_node("reason", self._reason_node)
         g.add_node("execute_tools", self._execute_tools_node)
-        g.add_node("complete",      self._complete_node)
-        g.add_node("handle_error",  self._handle_error_node)
+        g.add_node("complete", self._complete_node)
+        g.add_node("handle_error", self._handle_error_node)
 
-        g.add_edge(START,          "process_task")
+        g.add_edge(START, "process_task")
         g.add_edge("process_task", "reason")
         g.add_conditional_edges(
             "reason",
             self._should_use_tools,
-            {"execute": "execute_tools", "complete": "complete",
-             "error": "handle_error"},
+            {
+                "execute": "execute_tools",
+                "complete": "complete",
+                "error": "handle_error",
+            },
         )
         g.add_edge("execute_tools", "reason")
-        g.add_edge("complete",      END)
+        g.add_edge("complete", END)
         g.add_conditional_edges(
             "handle_error",
             lambda s: "retry" if s["retry_count"] < self.MAX_RETRIES else "done",
@@ -181,15 +194,21 @@ class ProductionAgent:
     # ── nodes ────────────────────────────────────────────────────────────────
 
     async def _process_task_node(self, state: AgentState) -> AgentState:
-        self.logger.info("Processing task", extra={
-            "task_id": state["task_id"], "task_type": state["task_type"],
-            "tenant_id": state["tenant_id"],
-        })
-        state["status"]     = "processing"
+        self.logger.info(
+            "Processing task",
+            extra={
+                "task_id": state["task_id"],
+                "task_type": state["task_type"],
+                "tenant_id": state["tenant_id"],
+            },
+        )
+        state["status"] = "processing"
         state["updated_at"] = datetime.utcnow().isoformat()
         state["messages"] = [
-            {"role": "system",
-             "content": f"You are a {self.agent_type} agent. Task: {state['task_type']}"},
+            {
+                "role": "system",
+                "content": f"You are a {self.agent_type} agent. Task: {state['task_type']}",
+            },
             {"role": "user", "content": json.dumps(state["payload"])},
         ]
         return state
@@ -201,37 +220,33 @@ class ProductionAgent:
         if self.llm is None:
             # Rule-based fallback: synthesise a result directly from the payload
             state["result"] = {
-                "response":   f"[rule-based] processed {state['task_type']}",
+                "response": f"[rule-based] processed {state['task_type']}",
                 "payload_echo": state["payload"],
             }
-            state["messages"].append({"role": "assistant",
-                                      "content": json.dumps(state["result"])})
+            state["messages"].append({"role": "assistant", "content": json.dumps(state["result"])})
             return state
 
         try:
             from langchain_core.messages import HumanMessage, SystemMessage
+
             lc_msgs = [
-                SystemMessage(content=m["content"]) if m["role"] == "system"
-                else HumanMessage(content=m["content"])
+                (SystemMessage(content=m["content"]) if m["role"] == "system" else HumanMessage(content=m["content"]))
                 for m in state["messages"]
                 if m["role"] in ("system", "user")
             ]
             response = await self.llm.ainvoke(lc_msgs)
-            state["messages"].append({"role": "assistant",
-                                       "content": response.content or ""})
+            state["messages"].append({"role": "assistant", "content": response.content or ""})
         except Exception as e:
             self.logger.error("Reasoning failed: %s", e)
             state["status"] = "failed"
-            state["error"]  = str(e)
+            state["error"] = str(e)
 
         return state
 
     def _should_use_tools(self, state: AgentState) -> str:
         if state["status"] == "failed":
             return "error"
-        if self.tools and "tool" in str(
-                state["messages"][-1].get("content", "") if state["messages"] else ""
-        ).lower():
+        if self.tools and "tool" in str(state["messages"][-1].get("content", "") if state["messages"] else "").lower():
             return "execute"
         return "complete"
 
@@ -244,35 +259,41 @@ class ProductionAgent:
             if tool.name.lower() in last.get("content", "").lower():
                 try:
                     tool_result = await tool.arun(last["content"])
-                    state["messages"].append({"role": "tool",
-                                              "content": str(tool_result)})
+                    state["messages"].append({"role": "tool", "content": str(tool_result)})
                 except Exception as e:
                     self.logger.error("Tool %s failed: %s", tool.name, e)
-                    state["error"]  = str(e)
+                    state["error"] = str(e)
                     state["status"] = "failed"
                 break
         return state
 
     async def _complete_node(self, state: AgentState) -> AgentState:
-        state["status"]     = "completed"
+        state["status"] = "completed"
         state["updated_at"] = datetime.utcnow().isoformat()
         if state["result"] is None and state["messages"]:
             state["result"] = {
-                "response":       state["messages"][-1].get("content", ""),
+                "response": state["messages"][-1].get("content", ""),
                 "messages_count": len(state["messages"]),
             }
-        self.logger.info("Task completed", extra={
-            "task_id": state["task_id"], "status": "completed",
-        })
+        self.logger.info(
+            "Task completed",
+            extra={
+                "task_id": state["task_id"],
+                "status": "completed",
+            },
+        )
         return state
 
     async def _handle_error_node(self, state: AgentState) -> AgentState:
         state["retry_count"] += 1
         if state["retry_count"] < self.MAX_RETRIES:
-            self.logger.warning("Retrying task (attempt %d)", state["retry_count"],
-                                extra={"task_id": state["task_id"]})
+            self.logger.warning(
+                "Retrying task (attempt %d)",
+                state["retry_count"],
+                extra={"task_id": state["task_id"]},
+            )
             state["status"] = "pending"
-            state["error"]  = None
+            state["error"] = None
         else:
             state["status"] = "failed"
         return state
@@ -282,26 +303,26 @@ class ProductionAgent:
     async def execute(self, task: TaskRequest) -> TaskResult:
         start = time.time()
         initial: AgentState = {
-            "task_id":          task.task_id,
-            "tenant_id":        task.tenant_id,
-            "agent_id":         self.agent_id,
-            "task_type":        task.task_type,
-            "payload":          task.payload,
-            "priority":         task.priority,
-            "user_id":          task.user_id,
-            "status":           "pending",
-            "messages":         [],
-            "result":           None,
-            "error":            None,
-            "created_at":       task.created_at,
-            "updated_at":       datetime.utcnow().isoformat(),
+            "task_id": task.task_id,
+            "tenant_id": task.tenant_id,
+            "agent_id": self.agent_id,
+            "task_type": task.task_type,
+            "payload": task.payload,
+            "priority": task.priority,
+            "user_id": task.user_id,
+            "status": "pending",
+            "messages": [],
+            "result": None,
+            "error": None,
+            "created_at": task.created_at,
+            "updated_at": datetime.utcnow().isoformat(),
             "execution_time_ms": 0.0,
-            "retry_count":      0,
-            "metadata":         {},
+            "retry_count": 0,
+            "metadata": {},
         }
         try:
-            final          = await self.workflow.ainvoke(initial)
-            elapsed        = (time.time() - start) * 1000
+            final = await self.workflow.ainvoke(initial)
+            elapsed = (time.time() - start) * 1000
             return TaskResult(
                 task_id=final["task_id"],
                 status=final["status"],
@@ -311,11 +332,20 @@ class ProductionAgent:
             )
         except Exception as e:
             elapsed = (time.time() - start) * 1000
-            self.logger.error("Task execution failed", extra={
-                "task_id": task.task_id, "error": str(e),
-            })
-            return TaskResult(task_id=task.task_id, status="failed",
-                              result={}, error=str(e), execution_time_ms=elapsed)
+            self.logger.error(
+                "Task execution failed",
+                extra={
+                    "task_id": task.task_id,
+                    "error": str(e),
+                },
+            )
+            return TaskResult(
+                task_id=task.task_id,
+                status="failed",
+                result={},
+                error=str(e),
+                execution_time_ms=elapsed,
+            )
 
     def add_tool(self, tool: Tool) -> None:
         self.tools.append(tool)
@@ -326,13 +356,10 @@ class ProductionAgent:
 
     def get_status(self) -> Dict[str, Any]:
         return {
-            "agent_id":     self.agent_id,
-            "agent_type":   self.agent_type,
-            "model":        self.model,
-            "tools_count":  len(self.tools),
+            "agent_id": self.agent_id,
+            "agent_type": self.agent_type,
+            "model": self.model,
+            "tools_count": len(self.tools),
             "llm_available": self.llm is not None,
-            "status":       "healthy",
+            "status": "healthy",
         }
-
-
-

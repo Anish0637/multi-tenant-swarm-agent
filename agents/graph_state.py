@@ -18,20 +18,21 @@ class AgentGraphState(TypedDict):
 
     Lifecycle: pending → processing → success | failed | unsupported
     """
-    task_id:        str
-    tenant_id:      str
-    task_type:      str
-    payload:        Dict[str, Any]
-    priority:       int
-    user_id:        str
-    status:         str          # pending | processing | success | failed | unsupported
-    result:         Optional[Dict[str, Any]]
-    error:          Optional[str]
-    created_at:     str
-    updated_at:     str
-    retry_count:    int
-    metadata:       Dict[str, Any]
-    correlation_id: str          # propagated from X-Correlation-ID header end-to-end
+
+    task_id: str
+    tenant_id: str
+    task_type: str
+    payload: Dict[str, Any]
+    priority: int
+    user_id: str
+    status: str  # pending | processing | success | failed | unsupported
+    result: Optional[Dict[str, Any]]
+    error: Optional[str]
+    created_at: str
+    updated_at: str
+    retry_count: int
+    metadata: Dict[str, Any]
+    correlation_id: str  # propagated from X-Correlation-ID header end-to-end
 
 
 def state_from_task(task: TaskRequest) -> AgentGraphState:
@@ -50,8 +51,7 @@ def state_from_task(task: TaskRequest) -> AgentGraphState:
         updated_at=datetime.utcnow().isoformat(),
         retry_count=0,
         metadata={},
-        correlation_id=(task.context or {}).get("correlation_id",
-                                                 str(uuid.uuid4())),
+        correlation_id=(task.context or {}).get("correlation_id", str(uuid.uuid4())),
     )
 
 

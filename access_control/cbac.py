@@ -8,12 +8,12 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
-
 logger = logging.getLogger(__name__)
 
 
 class Context(BaseModel):
     """Request context"""
+
     timestamp: datetime
     source_ip: str
     location: str  # e.g., "office", "remote", "datacenter"
@@ -24,6 +24,7 @@ class Context(BaseModel):
 
 class CBACRule(BaseModel):
     """CBAC policy rule"""
+
     rule_id: str
     name: str
     context_conditions: Dict[str, Any]
@@ -35,12 +36,12 @@ class CBACEnforcer:
     """
     CBAC enforcer - checks context-based policies.
     """
-    
+
     def __init__(self):
         """Initialize CBAC enforcer"""
         self.rules: Dict[str, CBACRule] = {}
         self._initialize_default_rules()
-    
+
     def _initialize_default_rules(self) -> None:
         """Initialize default CBAC rules"""
         # Allow access during business hours from office network
@@ -54,10 +55,10 @@ class CBACEnforcer:
                     "location": "office",
                 },
                 effect="allow",
-                priority=10
+                priority=10,
             )
         )
-        
+
         # Allow VPN access during business hours
         self.add_rule(
             CBACRule(
@@ -68,10 +69,10 @@ class CBACEnforcer:
                     "network": "vpn",
                 },
                 effect="allow",
-                priority=9
+                priority=9,
             )
         )
-        
+
         # Deny after-hours access from public networks
         self.add_rule(
             CBACRule(
@@ -82,10 +83,10 @@ class CBACEnforcer:
                     "network": "public",
                 },
                 effect="deny",
-                priority=20
+                priority=20,
             )
         )
-        
+
         # Deny mobile access to sensitive resources
         self.add_rule(
             CBACRule(
@@ -96,43 +97,32 @@ class CBACEnforcer:
                     "resource_sensitivity": "high",
                 },
                 effect="deny",
-                priority=15
+                priority=15,
             )
         )
-    
+
     def add_rule(self, rule: CBACRule) -> None:
         """Add a CBAC rule"""
         self.rules[rule.rule_id] = rule
-        logger.info(
-            f"CBAC rule added: {rule.name}",
-            extra={"rule_id": rule.rule_id}
-        )
-    
-    def check_permission(
-        self,
-        context: Context,
-        resource_sensitivity: str = "normal"
-    ) -> bool:
+        logger.info(f"CBAC rule added: {rule.name}", extra={"rule_id": rule.rule_id})
+
+    def check_permission(self, context: Context, resource_sensitivity: str = "normal") -> bool:
         """
         Check if access is permitted based on context.
-        
+
         Args:
             context: Request context
             resource_sensitivity: Resource sensitivity level
-            
+
         Returns:
             True if permitted, False otherwise
         """
         hour = context.timestamp.hour
         day_of_week = context.timestamp.weekday()  # 0=Monday, 6=Sunday
-        
+
         # Evaluate rules in priority order
-        sorted_rules = sorted(
-            self.rules.values(),
-            key=lambda r: r.priority,
-            reverse=True
-        )
-        
+        sorted_rules = sorted(self.rules.values(), key=lambda r: r.priority, reverse=True)
+
         for rule in sorted_rules:
             if self._evaluate_rule(rule, context, hour, day_of_week, resource_sensitivity):
                 allowed = rule.effect == "allow"
@@ -142,35 +132,32 @@ class CBACEnforcer:
                         "rule_id": rule.rule_id,
                         "source_ip": context.source_ip,
                         "location": context.location,
-                        "allowed": allowed
-                    }
+                        "allowed": allowed,
+                    },
                 )
                 return allowed
-        
-        logger.warning(
-            f"No matching context rules",
-            extra={"source_ip": context.source_ip}
-        )
+
+        logger.warning(f"No matching context rules", extra={"source_ip": context.source_ip})
         return False
-    
+
     def _evaluate_rule(
         self,
         rule: CBACRule,
         context: Context,
         hour: int,
         day_of_week: int,
-        resource_sensitivity: str
+        resource_sensitivity: str,
     ) -> bool:
         """
         Evaluate if rule conditions match.
-        
+
         Args:
             rule: Rule to evaluate
             context: Request context
             hour: Hour of day
             day_of_week: Day of week (0=Monday)
             resource_sensitivity: Resource sensitivity
-            
+
         Returns:
             True if all conditions match
         """
@@ -194,7 +181,7 @@ class CBACEnforcer:
                 if resource_sensitivity != value:
                     return False
         return True
-    
+
     def _compare_values(self, actual: Any, expected: Any) -> bool:
         """Compare values with support for operators"""
         if isinstance(expected, dict):

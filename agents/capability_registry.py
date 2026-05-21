@@ -22,19 +22,17 @@ class CapabilityRegistry:
     Thread-safe for reads (GIL); registrations happen at import time.
     """
 
-    _registry: Dict[str, str] = {}   # task_type (lowercase) → domain
+    _registry: Dict[str, str] = {}  # task_type (lowercase) → domain
 
     @classmethod
     def register(cls, domain: str, task_types: Iterable[str]) -> None:
         """Register all task_types for a domain."""
         for tt in task_types:
             cls._registry[tt.lower()] = domain
-        logger.debug("Capabilities registered — domain='%s' types=%s",
-                     domain, list(task_types))
+        logger.debug("Capabilities registered — domain='%s' types=%s", domain, list(task_types))
 
     @classmethod
-    def resolve(cls, task_type: str,
-                explicit_domain: Optional[str] = None) -> str:
+    def resolve(cls, task_type: str, explicit_domain: Optional[str] = None) -> str:
         """
         Return the domain responsible for task_type.
 

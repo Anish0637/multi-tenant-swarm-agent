@@ -18,7 +18,6 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
-
 # ── dedicated audit logger (never propagates to root) ───────────────────────
 
 _audit_logger = logging.getLogger("audit")
@@ -27,10 +26,11 @@ if not _audit_logger.handlers:
     _handler.setFormatter(logging.Formatter("%(message)s"))
     _audit_logger.addHandler(_handler)
     _audit_logger.setLevel(logging.INFO)
-    _audit_logger.propagate = False   # don't double-log via root
+    _audit_logger.propagate = False  # don't double-log via root
 
 
 # ── public API ───────────────────────────────────────────────────────────────
+
 
 def log_access(
     *,
@@ -39,7 +39,7 @@ def log_access(
     tenant_id: str,
     resource: str,
     action: str,
-    outcome: str,                        # "allowed" | "denied" | "success" | "failure"
+    outcome: str,  # "allowed" | "denied" | "success" | "failure"
     correlation_id: str = "",
     agent_type: str = "",
     task_type: str = "",
@@ -62,16 +62,16 @@ def log_access(
     details       Arbitrary extra fields (kept flat for CloudWatch queryability)
     """
     record: Dict[str, Any] = {
-        "timestamp":      datetime.now(timezone.utc).isoformat(),
-        "event":          event,
-        "user_id":        user_id,
-        "tenant_id":      tenant_id,
-        "resource":       resource,
-        "action":         action,
-        "outcome":        outcome,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "event": event,
+        "user_id": user_id,
+        "tenant_id": tenant_id,
+        "resource": resource,
+        "action": action,
+        "outcome": outcome,
         "correlation_id": correlation_id,
-        "agent_type":     agent_type,
-        "task_type":      task_type,
+        "agent_type": agent_type,
+        "task_type": task_type,
     }
     if details:
         record.update(details)

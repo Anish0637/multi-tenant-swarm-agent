@@ -55,7 +55,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Lint (flake8)
-        run: flake8 . --max-line-length=120 --exclude=.git,__pycache__,*.egg-info
+        run: flake8 . --max-line-length=120 --exclude=.git,__pycache__,cdk,terraform --extend-ignore=E203,W503
 
       - name: Unit tests
         env:

@@ -3,16 +3,16 @@ Production-grade Finance Agent using LangGraph.
 Specialized in expenses, budgets, invoices, payments, and financial reporting.
 """
 
-from typing import Any, Dict, Optional, List
+from typing import Any, Dict, List, Optional
 
 from agents.production_agent import ProductionAgent, TaskRequest, TaskResult
 from config.logging_config import get_logger
-
 
 logger = get_logger(__name__)
 
 
 # ==================== Finance Tools (as regular functions, not @tool decorated) ====================
+
 
 async def process_expense_report_impl(
     report_id: str,
@@ -21,18 +21,14 @@ async def process_expense_report_impl(
     category: str,
     date: str,
     description: str,
-    attachments: List[str] = None
+    attachments: List[str] = None,
 ) -> Dict[str, Any]:
     """Process expense report submission."""
     logger.info(
         f"Expense report processed",
-        extra={
-            "report_id": report_id,
-            "amount": amount,
-            "category": category
-        }
+        extra={"report_id": report_id, "amount": amount, "category": category},
     )
-    
+
     return {
         "status": "submitted",
         "report_id": report_id,
@@ -42,15 +38,12 @@ async def process_expense_report_impl(
         "date": date,
         "description": description,
         "submission_date": "2026-05-20T10:00:00Z",
-        "approval_status": "pending_review"
+        "approval_status": "pending_review",
     }
 
 
 async def budget_planning_impl(
-    department: str,
-    fiscal_year: str,
-    budget_amount: float,
-    items: List[Dict[str, Any]]
+    department: str, fiscal_year: str, budget_amount: float, items: List[Dict[str, Any]]
 ) -> Dict[str, Any]:
     """Create budget plan."""
     logger.info(
@@ -58,10 +51,10 @@ async def budget_planning_impl(
         extra={
             "department": department,
             "fiscal_year": fiscal_year,
-            "budget": budget_amount
-        }
+            "budget": budget_amount,
+        },
     )
-    
+
     return {
         "status": "created",
         "department": department,
@@ -69,7 +62,7 @@ async def budget_planning_impl(
         "total_budget": budget_amount,
         "items_count": len(items),
         "creation_date": "2026-05-20T10:00:00Z",
-        "approval_status": "draft"
+        "approval_status": "draft",
     }
 
 
@@ -79,18 +72,14 @@ async def invoice_processing_impl(
     amount: float,
     due_date: str,
     description: str,
-    line_items: List[Dict[str, Any]] = None
+    line_items: List[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Process invoice."""
     logger.info(
         f"Invoice processed",
-        extra={
-            "invoice_id": invoice_id,
-            "amount": amount,
-            "vendor_id": vendor_id
-        }
+        extra={"invoice_id": invoice_id, "amount": amount, "vendor_id": vendor_id},
     )
-    
+
     return {
         "status": "received",
         "invoice_id": invoice_id,
@@ -100,7 +89,7 @@ async def invoice_processing_impl(
         "description": description,
         "line_items": line_items or [],
         "receipt_date": "2026-05-20T10:00:00Z",
-        "approval_status": "pending_payment"
+        "approval_status": "pending_payment",
     }
 
 
@@ -109,7 +98,7 @@ async def generate_financial_report_impl(
     start_date: str,
     end_date: str,
     department: str = "all",
-    format: str = "pdf"
+    format: str = "pdf",
 ) -> Dict[str, Any]:
     """Generate financial report."""
     logger.info(
@@ -117,10 +106,10 @@ async def generate_financial_report_impl(
         extra={
             "report_type": report_type,
             "period": f"{start_date} to {end_date}",
-            "department": department
-        }
+            "department": department,
+        },
     )
-    
+
     return {
         "status": "generated",
         "report_type": report_type,
@@ -129,16 +118,17 @@ async def generate_financial_report_impl(
         "department": department,
         "format": format,
         "file_path": f"/reports/{report_type}_{start_date}_{end_date}.{format}",
-        "generation_date": "2026-05-20T10:00:00Z"
+        "generation_date": "2026-05-20T10:00:00Z",
     }
 
 
 # ==================== Finance Agent ====================
 
+
 class FinanceAgentProduction(ProductionAgent):
     """
     Production Finance Agent with LangGraph workflow.
-    
+
     Handles:
     - Expense management
     - Budget planning
@@ -146,31 +136,28 @@ class FinanceAgentProduction(ProductionAgent):
     - Financial reporting
     - Payment approvals
     """
-    
+
     def __init__(self, tenant_id: str = "default", config: Optional[Dict[str, Any]] = None):
         """Initialize Finance agent"""
         # Tools are now defined as regular functions
         finance_tools = []
-        
+
         super().__init__(
             agent_id="finance_agent",
             agent_type="finance",
             llm_provider="openai",
             model="gpt-4",
             tools=finance_tools,
-            config=config or {}
+            config=config or {},
         )
-        
+
         self.tenant_id = tenant_id
-        
+
         logger.info(
             f"Finance Agent initialized",
-            extra={
-                "tenant_id": tenant_id,
-                "tools": len(finance_tools)
-            }
+            extra={"tenant_id": tenant_id, "tools": len(finance_tools)},
         )
-    
+
     async def handle_expense_report(
         self,
         report_id: str,
@@ -179,7 +166,7 @@ class FinanceAgentProduction(ProductionAgent):
         category: str,
         date: str,
         description: str,
-        attachments: List[str] = None
+        attachments: List[str] = None,
     ) -> Dict[str, Any]:
         """Handle expense report"""
         task = TaskRequest(
@@ -192,20 +179,20 @@ class FinanceAgentProduction(ProductionAgent):
                 "category": category,
                 "date": date,
                 "description": description,
-                "attachments": attachments or []
+                "attachments": attachments or [],
             },
-            user_id="system"
+            user_id="system",
         )
-        
+
         result = await self.execute(task)
         return result.dict()
-    
+
     async def handle_budget_planning(
         self,
         department: str,
         fiscal_year: str,
         budget_amount: float,
-        items: List[Dict[str, Any]]
+        items: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Handle budget planning"""
         task = TaskRequest(
@@ -215,17 +202,18 @@ class FinanceAgentProduction(ProductionAgent):
                 "department": department,
                 "fiscal_year": fiscal_year,
                 "budget_amount": budget_amount,
-                "items": items
+                "items": items,
             },
-            user_id="system"
+            user_id="system",
         )
-        
+
         result = await self.execute(task)
         return result.dict()
 
 
 # Global agent instance (lazy-loaded)
 _finance_agent = None
+
 
 def get_finance_agent():
     """Get or create Finance agent instance"""

@@ -12,10 +12,9 @@ from typing import Any, Dict, List, Optional
 
 from langgraph.graph import END, START, StateGraph
 
-from agents.base_agent import BaseAgent, AgentType, TaskRequest, TaskResult
+from agents.base_agent import AgentType, BaseAgent, TaskRequest, TaskResult
 from agents.capability_registry import CapabilityRegistry
 from agents.graph_state import AgentGraphState, result_from_state, state_from_task
-
 
 logger = logging.getLogger(__name__)
 
@@ -49,36 +48,36 @@ class FinanceAgent(BaseAgent):
     def _build_graph(self):
         g = StateGraph(AgentGraphState)
 
-        g.add_node("validate",     self._validate)
-        g.add_node("invoice",      self._create_invoice)
-        g.add_node("expense",      self._process_expense)
-        g.add_node("budget",       self._track_budget)
-        g.add_node("report",       self._generate_report)
-        g.add_node("audit",        self._process_audit)
-        g.add_node("payroll",      self._process_payroll)
-        g.add_node("unsupported",  self._unsupported)
+        g.add_node("validate", self._validate)
+        g.add_node("invoice", self._create_invoice)
+        g.add_node("expense", self._process_expense)
+        g.add_node("budget", self._track_budget)
+        g.add_node("report", self._generate_report)
+        g.add_node("audit", self._process_audit)
+        g.add_node("payroll", self._process_payroll)
+        g.add_node("unsupported", self._unsupported)
         g.add_node("handle_error", self._handle_error)
-        g.add_node("complete",     self._complete)
+        g.add_node("complete", self._complete)
 
         g.add_edge(START, "validate")
         g.add_conditional_edges(
             "validate",
             self._route,
             {
-                "invoice":     "invoice",
-                "expense":     "expense",
-                "budget":      "budget",
-                "report":      "report",
-                "audit":       "audit",
-                "payroll":     "payroll",
+                "invoice": "invoice",
+                "expense": "expense",
+                "budget": "budget",
+                "report": "report",
+                "audit": "audit",
+                "payroll": "payroll",
                 "unsupported": "unsupported",
-                "error":       "handle_error",
+                "error": "handle_error",
             },
         )
         for node in _SUPPORTED:
             g.add_edge(node, "complete")
-        g.add_edge("complete",     END)
-        g.add_edge("unsupported",  END)
+        g.add_edge("complete", END)
+        g.add_edge("unsupported", END)
         g.add_edge("handle_error", END)
 
         return g.compile()
@@ -121,22 +120,22 @@ class FinanceAgent(BaseAgent):
     def _create_invoice(self, state: AgentGraphState) -> AgentGraphState:
         logger.info("Creating invoice: %s", state["task_id"])
         state["result"] = {
-            "action":     "invoice_created",
+            "action": "invoice_created",
             "invoice_id": f"INV-{state['task_id'][:8]}",
-            "client":     state["payload"].get("client"),
-            "amount":     state["payload"].get("amount"),
-            "status":     "draft",
+            "client": state["payload"].get("client"),
+            "amount": state["payload"].get("amount"),
+            "status": "draft",
         }
         return state
 
     def _process_expense(self, state: AgentGraphState) -> AgentGraphState:
         logger.info("Processing expense: %s", state["task_id"])
-        
+
         state["result"] = {
-            "action":          "expense_processed",
-            "expense_id":      f"EXP-{state['task_id'][:8]}",
-            "category":        state["payload"].get("category"),
-            "amount":          state["payload"].get("amount"),
+            "action": "expense_processed",
+            "expense_id": f"EXP-{state['task_id'][:8]}",
+            "category": state["payload"].get("category"),
+            "amount": state["payload"].get("amount"),
             "approval_status": "pending",
         }
         return state
@@ -146,21 +145,21 @@ class FinanceAgent(BaseAgent):
         total = state["payload"].get("total_budget", 0)
         spent = state["payload"].get("spent", 0)
         state["result"] = {
-            "action":       "budget_tracked",
-            "department":   state["payload"].get("department"),
+            "action": "budget_tracked",
+            "department": state["payload"].get("department"),
             "total_budget": total,
-            "spent":        spent,
-            "remaining":    total - spent,
+            "spent": spent,
+            "remaining": total - spent,
         }
         return state
 
     def _generate_report(self, state: AgentGraphState) -> AgentGraphState:
         logger.info("Generating report: %s", state["task_id"])
         state["result"] = {
-            "action":        "report_generated",
-            "report_type":   state["payload"].get("report_type"),
-            "period":        state["payload"].get("period"),
-            "status":        "ready",
+            "action": "report_generated",
+            "report_type": state["payload"].get("report_type"),
+            "period": state["payload"].get("period"),
+            "status": "ready",
             "file_location": f"s3://reports/{state['task_id']}.pdf",
         }
         return state
@@ -168,9 +167,9 @@ class FinanceAgent(BaseAgent):
     def _process_audit(self, state: AgentGraphState) -> AgentGraphState:
         logger.info("Processing audit: %s", state["task_id"])
         state["result"] = {
-            "action":            "audit_processed",
-            "audit_id":          f"AUD-{state['task_id'][:8]}",
-            "scope":             state["payload"].get("scope"),
+            "action": "audit_processed",
+            "audit_id": f"AUD-{state['task_id'][:8]}",
+            "scope": state["payload"].get("scope"),
             "compliance_status": "in_progress",
         }
         return state
@@ -178,11 +177,11 @@ class FinanceAgent(BaseAgent):
     def _process_payroll(self, state: AgentGraphState) -> AgentGraphState:
         logger.info("Processing payroll: %s", state["task_id"])
         state["result"] = {
-            "action":         "payroll_processed",
+            "action": "payroll_processed",
             "payroll_period": state["payload"].get("period"),
             "employee_count": state["payload"].get("employee_count", 0),
-            "total_amount":   state["payload"].get("total_amount", 0),
-            "status":         "approved",
+            "total_amount": state["payload"].get("total_amount", 0),
+            "status": "approved",
         }
         return state
 

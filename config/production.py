@@ -4,35 +4,39 @@ Handles environment-based config, AWS service setup, and validation.
 """
 
 import logging
-from typing import Optional, Dict, Any
 from functools import lru_cache
+from typing import Any, Dict, Optional
 
+from pydantic import ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator, ConfigDict
 
 
 class AWSConfig(BaseSettings):
     """AWS service configuration"""
+
     model_config = ConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
-    
+
     aws_region: str = Field(default="us-east-1", env="AWS_REGION")
     aws_account_id: str = Field(default="", env="AWS_ACCOUNT_ID")
     xray_enabled: bool = Field(default=True, env="XRAY_ENABLED")
-    cloudwatch_log_group: str = Field(default="/aws/swarm-agent", env="CLOUDWATCH_LOG_GROUP")
+    cloudwatch_log_group: str = Field(
+        default="/aws/swarm-agent", env="CLOUDWATCH_LOG_GROUP"
+    )
     dynamodb_table: str = Field(default="swarm-agent-state", env="DYNAMODB_TABLE")
     s3_bucket: str = Field(default="swarm-agent-logs", env="S3_BUCKET")
 
 
 class RedisConfig(BaseSettings):
     """Redis/ElastiCache configuration"""
+
     model_config = ConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
-    
+
     redis_host: str = Field(default="localhost", env="REDIS_HOST")
     redis_port: int = Field(default=6379, env="REDIS_PORT")
     redis_db: int = Field(default=0, env="REDIS_DB")
     redis_password: Optional[str] = Field(default=None, env="REDIS_PASSWORD")
     redis_ssl: bool = Field(default=False, env="REDIS_SSL")
-    
+
     @property
     def redis_url(self) -> str:
         """Generate Redis URL"""
@@ -43,8 +47,9 @@ class RedisConfig(BaseSettings):
 
 class DatabaseConfig(BaseSettings):
     """PostgreSQL database configuration"""
+
     model_config = ConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
-    
+
     db_host: str = Field(default="localhost", env="DB_HOST")
     db_port: int = Field(default=5432, env="DB_PORT")
     db_user: str = Field(default="postgres", env="DB_USER")
@@ -52,7 +57,7 @@ class DatabaseConfig(BaseSettings):
     db_name: str = Field(default="swarm_agent", env="DB_NAME")
     db_pool_size: int = Field(default=20, env="DB_POOL_SIZE")
     db_max_overflow: int = Field(default=10, env="DB_MAX_OVERFLOW")
-    
+
     @property
     def db_url(self) -> str:
         """Generate database URL"""
@@ -64,8 +69,9 @@ class DatabaseConfig(BaseSettings):
 
 class SecurityConfig(BaseSettings):
     """Security configuration"""
+
     model_config = ConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
-    
+
     api_key_enabled: bool = Field(default=True, env="API_KEY_ENABLED")
     api_key_header: str = Field(default="X-API-Key", env="API_KEY_HEADER")
     api_keys: Dict[str, str] = Field(default_factory=dict, env="API_KEYS")
@@ -78,8 +84,9 @@ class SecurityConfig(BaseSettings):
 
 class AppConfig(BaseSettings):
     """Application configuration"""
+
     model_config = ConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
-    
+
     env: str = Field(default="development", env="ENV")
     debug: bool = Field(default=False, env="DEBUG")
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
@@ -87,17 +94,17 @@ class AppConfig(BaseSettings):
     host: str = Field(default="0.0.0.0", env="HOST")
     port: int = Field(default=9000, env="PORT")
     request_timeout: int = Field(default=30, env="REQUEST_TIMEOUT")
-    
+
     # Service endpoints
     mcp_server_host: str = Field(default="0.0.0.0", env="MCP_SERVER_HOST")
     mcp_server_port: int = Field(default=9000, env="MCP_SERVER_PORT")
-    
+
     # Feature flags
     enable_traces: bool = Field(default=True, env="ENABLE_TRACES")
     enable_metrics: bool = Field(default=True, env="ENABLE_METRICS")
     enable_profiling: bool = Field(default=False, env="ENABLE_PROFILING")
-    
-    @field_validator('env', mode='before')
+
+    @field_validator("env", mode="before")
     @classmethod
     def validate_env(cls, v):
         allowed = ["development", "staging", "production"]

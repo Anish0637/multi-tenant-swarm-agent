@@ -12,10 +12,9 @@ from typing import Any, Dict, List, Optional
 
 from langgraph.graph import END, START, StateGraph
 
-from agents.base_agent import BaseAgent, AgentType, TaskRequest, TaskResult
+from agents.base_agent import AgentType, BaseAgent, TaskRequest, TaskResult
 from agents.capability_registry import CapabilityRegistry
 from agents.graph_state import AgentGraphState, result_from_state, state_from_task
-
 
 logger = logging.getLogger(__name__)
 
@@ -45,14 +44,14 @@ class HRAgent(BaseAgent):
     def _build_graph(self):
         g = StateGraph(AgentGraphState)
 
-        g.add_node("validate",      self._validate)
+        g.add_node("validate", self._validate)
         g.add_node("process_leave", self._process_leave)
-        g.add_node("recruitment",   self._handle_recruitment)
-        g.add_node("payroll",       self._process_payroll)
+        g.add_node("recruitment", self._handle_recruitment)
+        g.add_node("payroll", self._process_payroll)
         g.add_node("employee_data", self._fetch_employee_data)
-        g.add_node("unsupported",   self._unsupported)
-        g.add_node("handle_error",  self._handle_error)
-        g.add_node("complete",      self._complete)
+        g.add_node("unsupported", self._unsupported)
+        g.add_node("handle_error", self._handle_error)
+        g.add_node("complete", self._complete)
 
         g.add_edge(START, "validate")
         g.add_conditional_edges(
@@ -60,17 +59,17 @@ class HRAgent(BaseAgent):
             self._route,
             {
                 "process_leave": "process_leave",
-                "recruitment":   "recruitment",
-                "payroll":       "payroll",
+                "recruitment": "recruitment",
+                "payroll": "payroll",
                 "employee_data": "employee_data",
-                "unsupported":   "unsupported",
-                "error":         "handle_error",
+                "unsupported": "unsupported",
+                "error": "handle_error",
             },
         )
         for node in _SUPPORTED:
             g.add_edge(node, "complete")
-        g.add_edge("complete",     END)
-        g.add_edge("unsupported",  END)
+        g.add_edge("complete", END)
+        g.add_edge("unsupported", END)
         g.add_edge("handle_error", END)
 
         return g.compile()
@@ -113,10 +112,10 @@ class HRAgent(BaseAgent):
     def _process_leave(self, state: AgentGraphState) -> AgentGraphState:
         logger.info("Processing leave request: %s", state["task_id"])
         state["result"] = {
-            "action":          "leave_processed",
-            "employee_id":     state["payload"].get("employee_id"),
-            "leave_type":      state["payload"].get("leave_type"),
-            "days":            state["payload"].get("days"),
+            "action": "leave_processed",
+            "employee_id": state["payload"].get("employee_id"),
+            "leave_type": state["payload"].get("leave_type"),
+            "days": state["payload"].get("days"),
             "approval_status": "pending_review",
         }
         return state
@@ -124,32 +123,32 @@ class HRAgent(BaseAgent):
     def _handle_recruitment(self, state: AgentGraphState) -> AgentGraphState:
         logger.info("Processing recruitment: %s", state["task_id"])
         state["result"] = {
-            "action":     "recruitment_processed",
-            "position":   state["payload"].get("position"),
+            "action": "recruitment_processed",
+            "position": state["payload"].get("position"),
             "candidates": state["payload"].get("candidates", []),
-            "status":     "in_progress",
+            "status": "in_progress",
         }
         return state
 
     def _process_payroll(self, state: AgentGraphState) -> AgentGraphState:
         logger.info("Processing payroll: %s", state["task_id"])
         state["result"] = {
-            "action":         "payroll_processed",
+            "action": "payroll_processed",
             "payroll_period": state["payload"].get("period"),
             "employee_count": state["payload"].get("employee_count", 0),
-            "status":         "approved",
+            "status": "approved",
         }
         return state
 
     def _fetch_employee_data(self, state: AgentGraphState) -> AgentGraphState:
         logger.info("Fetching employee data: %s", state["task_id"])
         state["result"] = {
-            "action":      "employee_data_fetched",
+            "action": "employee_data_fetched",
             "employee_id": state["payload"].get("employee_id"),
             "data": {
-                "name":       "John Doe",
+                "name": "John Doe",
                 "department": "Engineering",
-                "status":     "active",
+                "status": "active",
             },
         }
         return state
@@ -167,6 +166,3 @@ class HRAgent(BaseAgent):
 
     def get_capabilities(self) -> List[str]:
         return sorted(_SUPPORTED)
-
-
-

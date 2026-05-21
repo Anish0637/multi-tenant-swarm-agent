@@ -22,7 +22,7 @@ agents_config = {
             "handle_recruitment",
             "process_payroll",
             "fetch_employee_data",
-        ]
+        ],
     },
     "finance": {
         "name": "Finance Agent",
@@ -36,7 +36,7 @@ agents_config = {
             "process_expense",
             "track_budget",
             "generate_report",
-        ]
+        ],
     },
     "medical": {
         "name": "Medical Agent",
@@ -50,8 +50,8 @@ agents_config = {
             "schedule_appointment",
             "process_prescription",
             "manage_medical_record",
-        ]
-    }
+        ],
+    },
 }
 
 # Registry configuration

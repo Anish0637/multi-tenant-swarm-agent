@@ -19,7 +19,6 @@ Graph:
 
 import logging
 import time
-from collections import defaultdict
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -27,10 +26,9 @@ from langgraph.graph import END, START, StateGraph
 
 from access_control.rbac import Permission, RBACEnforcer
 from agents import audit
-from agents.base_agent import BaseAgent, AgentType, TaskRequest, TaskResult
+from agents.base_agent import AgentType, BaseAgent, TaskRequest, TaskResult
 from agents.capability_registry import CapabilityRegistry
 from agents.graph_state import AgentGraphState, result_from_state, state_from_task
-
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +36,7 @@ logger = logging.getLogger(__name__)
 # ══════════════════════════════════════════════════════════════════════════════
 # Circuit breaker
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class _CircuitBreaker:
     """
@@ -51,11 +50,11 @@ class _CircuitBreaker:
     """
 
     def __init__(self, threshold: int = 5, recovery_timeout: float = 30.0):
-        self.threshold        = threshold
+        self.threshold = threshold
         self.recovery_timeout = recovery_timeout
-        self._failures        = 0
+        self._failures = 0
         self._opened_at: Optional[float] = None
-        self._half_open       = False
+        self._half_open = False
 
     @property
     def state(self) -> str:
@@ -70,7 +69,7 @@ class _CircuitBreaker:
         return self.state == "open"
 
     def record_success(self) -> None:
-        self._failures  = 0
+        self._failures = 0
         self._opened_at = None
 
     def record_failure(self) -> None:
@@ -83,6 +82,7 @@ class _CircuitBreaker:
 # ══════════════════════════════════════════════════════════════════════════════
 # Supervisor
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class SupervisorAgent(BaseAgent):
     """
@@ -113,12 +113,12 @@ class SupervisorAgent(BaseAgent):
             config=config or {},
         )
         self.sub_agents: Dict[str, BaseAgent] = {}
-        self._rbac              = RBACEnforcer()
-        self._strict_rbac       = strict_rbac
+        self._rbac = RBACEnforcer()
+        self._strict_rbac = strict_rbac
         self._circuit_threshold = circuit_threshold
-        self._circuit_timeout   = circuit_timeout
+        self._circuit_timeout = circuit_timeout
         self._breakers: Dict[str, _CircuitBreaker] = {}
-        self._graph             = self._build_graph()
+        self._graph = self._build_graph()
 
     # ── sub-agent registry ────────────────────────────────────────────────
 
@@ -132,10 +132,10 @@ class SupervisorAgent(BaseAgent):
     def _build_graph(self):
         g = StateGraph(AgentGraphState)
 
-        g.add_node("validate",       self._validate)
+        g.add_node("validate", self._validate)
         g.add_node("route_to_agent", self._route_to_agent)
-        g.add_node("handle_error",   self._handle_error)
-        g.add_node("complete",       self._complete)
+        g.add_node("handle_error", self._handle_error)
+        g.add_node("complete", self._complete)
 
         g.add_edge(START, "validate")
         g.add_conditional_edges(
@@ -144,8 +144,8 @@ class SupervisorAgent(BaseAgent):
             {"ok": "route_to_agent", "error": "handle_error"},
         )
         g.add_edge("route_to_agent", "complete")
-        g.add_edge("complete",       END)
-        g.add_edge("handle_error",   END)
+        g.add_edge("complete", END)
+        g.add_edge("handle_error", END)
 
         return g.compile()
 
@@ -170,7 +170,7 @@ class SupervisorAgent(BaseAgent):
     # ── nodes ──────────────────────────────────────────────────────────────
 
     def _validate(self, state: AgentGraphState) -> AgentGraphState:
-        state["status"]     = "processing"
+        state["status"] = "processing"
         state["updated_at"] = datetime.utcnow().isoformat()
         if not state.get("task_type"):
             state["error"] = "Missing task_type"
@@ -178,7 +178,7 @@ class SupervisorAgent(BaseAgent):
 
     async def _route_to_agent(self, state: AgentGraphState) -> AgentGraphState:
         correlation_id = state.get("correlation_id", "")
-        domain         = CapabilityRegistry.resolve(
+        domain = CapabilityRegistry.resolve(
             state["task_type"],
             explicit_domain=state.get("metadata", {}).get("agent_type"),
         )
@@ -198,9 +198,8 @@ class SupervisorAgent(BaseAgent):
                 task_type=state["task_type"],
             )
             state["status"] = "failed"
-            state["error"]  = (
-                f"Permission denied: user '{state['user_id']}' cannot execute "
-                f"tasks in domain '{domain}'"
+            state["error"] = (
+                f"Permission denied: user '{state['user_id']}' cannot execute " f"tasks in domain '{domain}'"
             )
             state["result"] = {}
             return state
@@ -209,7 +208,7 @@ class SupervisorAgent(BaseAgent):
         agent = self.sub_agents.get(agent_key)
         if not agent:
             state["status"] = "failed"
-            state["error"]  = (
+            state["error"] = (
                 f"No sub-agent registered for domain '{domain}' "
                 f"(key={agent_key}). Registered: {list(self.sub_agents)}"
             )
@@ -229,11 +228,13 @@ class SupervisorAgent(BaseAgent):
                 correlation_id=correlation_id,
                 agent_type=domain,
                 task_type=state["task_type"],
-                details={"reason": "circuit_breaker_open",
-                         "breaker_state": breaker.state},
+                details={
+                    "reason": "circuit_breaker_open",
+                    "breaker_state": breaker.state,
+                },
             )
             state["status"] = "failed"
-            state["error"]  = f"Circuit breaker open for domain '{domain}'"
+            state["error"] = f"Circuit breaker open for domain '{domain}'"
             state["result"] = {}
             return state
 
@@ -257,8 +258,7 @@ class SupervisorAgent(BaseAgent):
             payload=state["payload"],
             priority=state["priority"],
             user_id=state["user_id"],
-            context={**state.get("metadata", {}),
-                     "correlation_id": correlation_id},
+            context={**state.get("metadata", {}), "correlation_id": correlation_id},
         )
 
         try:
@@ -279,7 +279,7 @@ class SupervisorAgent(BaseAgent):
                 details={"error": str(exc)},
             )
             state["status"] = "failed"
-            state["error"]  = str(exc)
+            state["error"] = str(exc)
             state["result"] = {}
             return state
 
@@ -332,6 +332,3 @@ class SupervisorAgent(BaseAgent):
     def get_circuit_breaker_status(self) -> Dict[str, str]:
         """Operational view of all per-domain circuit breakers."""
         return {domain: cb.state for domain, cb in self._breakers.items()}
-
-
-

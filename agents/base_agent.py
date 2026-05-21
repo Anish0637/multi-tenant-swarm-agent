@@ -14,12 +14,12 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
-
 logger = logging.getLogger(__name__)
 
 
 class AgentType(str, Enum):
     """Agent type enumeration"""
+
     SUPERVISOR = "supervisor"
     HR = "hr"
     FINANCE = "finance"
@@ -28,6 +28,7 @@ class AgentType(str, Enum):
 
 class AgentStatus(str, Enum):
     """Agent status enumeration"""
+
     IDLE = "idle"
     PROCESSING = "processing"
     PAUSED = "paused"
@@ -37,6 +38,7 @@ class AgentStatus(str, Enum):
 
 class Message(BaseModel):
     """Message model for agent communication"""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     sender: str
     recipient: str
@@ -48,6 +50,7 @@ class Message(BaseModel):
 
 class TaskRequest(BaseModel):
     """Task request model"""
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     tenant_id: str
     task_type: str
@@ -60,6 +63,7 @@ class TaskRequest(BaseModel):
 
 class TaskResult(BaseModel):
     """Task result model"""
+
     id: str
     status: str
     result: Dict[str, Any]
@@ -71,7 +75,7 @@ class TaskResult(BaseModel):
 class BaseAgent(ABC):
     """
     Base class for all agents in the swarm.
-    
+
     Provides:
     - Agent lifecycle management
     - Message routing
@@ -79,17 +83,17 @@ class BaseAgent(ABC):
     - Health monitoring
     - Audit logging
     """
-    
+
     def __init__(
         self,
         name: str,
         agent_type: AgentType,
         tenant_id: str = "default",
-        config: Optional[Dict[str, Any]] = None
+        config: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize base agent.
-        
+
         Args:
             name: Agent name
             agent_type: Type of agent
@@ -112,37 +116,34 @@ class BaseAgent(ABC):
             "avg_processing_time": 0.0,
             "total_processing_time": 0.0,
         }
-        
+
         logger.info(
             f"Agent {self.name} ({self.id}) initialized",
             extra={
                 "agent_id": self.id,
                 "agent_type": self.agent_type.value,
                 "tenant_id": self.tenant_id,
-            }
+            },
         )
-    
+
     async def start(self) -> None:
         """Start the agent"""
         self.status = AgentStatus.PROCESSING
         logger.info(f"Agent {self.name} started")
         await self._run()
-    
+
     async def stop(self) -> None:
         """Stop the agent"""
         self.status = AgentStatus.STOPPED
         logger.info(f"Agent {self.name} stopped")
-    
+
     async def _run(self) -> None:
         """Main agent loop"""
         try:
             while self.status != AgentStatus.STOPPED:
                 try:
                     # Process task queue with timeout
-                    task = await asyncio.wait_for(
-                        self.task_queue.get(),
-                        timeout=5.0
-                    )
+                    task = await asyncio.wait_for(self.task_queue.get(), timeout=5.0)
                     await self._process_task(task)
                 except asyncio.TimeoutError:
                     # Send heartbeat
@@ -150,21 +151,21 @@ class BaseAgent(ABC):
                 except Exception as e:
                     logger.error(
                         f"Error processing task: {str(e)}",
-                        extra={"agent_id": self.id, "error": str(e)}
+                        extra={"agent_id": self.id, "error": str(e)},
                     )
                     self.status = AgentStatus.ERROR
         except Exception as e:
             logger.error(
                 f"Agent {self.name} crashed: {str(e)}",
                 extra={"agent_id": self.id, "error": str(e)},
-                exc_info=True
+                exc_info=True,
             )
             self.status = AgentStatus.ERROR
-    
+
     async def _process_task(self, task: TaskRequest) -> None:
         """
         Process a task.
-        
+
         Args:
             task: Task to process
         """
@@ -175,12 +176,12 @@ class BaseAgent(ABC):
                 extra={
                     "agent_id": self.id,
                     "task_id": task.id,
-                    "task_type": task.task_type
-                }
+                    "task_type": task.task_type,
+                },
             )
-            
+
             result = await self.handle_task(task)
-            
+
             # Update metrics
             processing_time = (datetime.utcnow() - start_time).total_seconds()
             self.metrics["tasks_processed"] += 1
@@ -188,45 +189,41 @@ class BaseAgent(ABC):
             self.metrics["avg_processing_time"] = (
                 self.metrics["total_processing_time"] / self.metrics["tasks_processed"]
             )
-            
+
             logger.info(
                 f"Task {task.id} completed",
                 extra={
                     "agent_id": self.id,
                     "task_id": task.id,
-                    "processing_time": processing_time
-                }
+                    "processing_time": processing_time,
+                },
             )
-            
+
         except Exception as e:
             self.metrics["tasks_failed"] += 1
             logger.error(
                 f"Task {task.id} failed: {str(e)}",
-                extra={
-                    "agent_id": self.id,
-                    "task_id": task.id,
-                    "error": str(e)
-                },
-                exc_info=True
+                extra={"agent_id": self.id, "task_id": task.id, "error": str(e)},
+                exc_info=True,
             )
-    
+
     @abstractmethod
     async def handle_task(self, task: TaskRequest) -> TaskResult:
         """
         Handle a task (implemented by subclasses).
-        
+
         Args:
             task: Task to handle
-            
+
         Returns:
             Task result
         """
         pass
-    
+
     async def send_message(self, message: Message) -> None:
         """
         Send a message to another agent.
-        
+
         Args:
             message: Message to send
         """
@@ -236,13 +233,13 @@ class BaseAgent(ABC):
                 "message_id": message.id,
                 "sender": message.sender,
                 "recipient": message.recipient,
-            }
+            },
         )
-    
+
     async def receive_message(self, message: Message) -> None:
         """
         Receive a message from another agent.
-        
+
         Args:
             message: Received message
         """
@@ -252,17 +249,14 @@ class BaseAgent(ABC):
         else:
             logger.warning(
                 f"No handler for message from {message.sender}",
-                extra={"message_id": message.id}
+                extra={"message_id": message.id},
             )
-    
+
     async def _send_heartbeat(self) -> None:
         """Send heartbeat to registry"""
         self.last_heartbeat = datetime.utcnow()
-        logger.debug(
-            f"Agent {self.name} heartbeat",
-            extra={"agent_id": self.id}
-        )
-    
+        logger.debug(f"Agent {self.name} heartbeat", extra={"agent_id": self.id})
+
     def get_status(self) -> Dict[str, Any]:
         """Get agent status"""
         return {
@@ -275,7 +269,7 @@ class BaseAgent(ABC):
             "last_heartbeat": self.last_heartbeat.isoformat(),
             "metrics": self.metrics,
         }
-    
+
     def get_capabilities(self) -> List[str]:
         """Get agent capabilities (implemented by subclasses)"""
         return []

@@ -2,9 +2,11 @@
 Test registry service functionality.
 """
 
+from datetime import datetime, timedelta
+
 import pytest
 import pytest_asyncio
-from datetime import datetime, timedelta
+
 from registry import ServiceRegistry
 
 
@@ -23,9 +25,9 @@ async def test_register_agent(registry):
         agent_type="test",
         tenant_id="default",
         capabilities=["test_capability"],
-        endpoint="http://localhost:8001"
+        endpoint="http://localhost:8001",
     )
-    
+
     assert registration.agent_id == "test_agent_1"
     assert registration.status == "healthy"
 
@@ -39,9 +41,9 @@ async def test_discover_agents(registry):
         agent_type="hr",
         tenant_id="hr",
         capabilities=["process_leave"],
-        endpoint="http://localhost:8001"
+        endpoint="http://localhost:8001",
     )
-    
+
     # Discover by type
     agents = await registry.discover_agents(agent_type="hr")
     assert len(agents) == 1
@@ -57,13 +59,13 @@ async def test_heartbeat(registry):
         agent_type="test",
         tenant_id="default",
         capabilities=[],
-        endpoint="http://localhost:8001"
+        endpoint="http://localhost:8001",
     )
-    
+
     # Send heartbeat
     result = await registry.heartbeat("test_agent_2")
     assert result is True
-    
+
     # Check status
     agent = await registry.get_agent("test_agent_2")
     assert agent.status == "healthy"
@@ -78,9 +80,9 @@ async def test_health_check(registry):
         agent_type="test",
         tenant_id="default",
         capabilities=[],
-        endpoint="http://localhost:8001"
+        endpoint="http://localhost:8001",
     )
-    
+
     # Health check
     health = await registry.health_check()
     assert health["total_agents"] == 1
