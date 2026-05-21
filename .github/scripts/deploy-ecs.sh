@@ -21,6 +21,12 @@ done
 
 [[ -z "$CLUSTER" || -z "$ENV" || -z "$TAG" ]] && { echo "Missing required args"; exit 1; }
 
+# ── Guard: required secrets must be non-empty for production ────────────────
+if [[ "$ENV" == "production" ]]; then
+  [[ -z "${MCP_INTERNAL_API_KEY:-}" ]] && { echo "ERROR: MCP_INTERNAL_API_KEY secret is not set in GitHub Actions — add it under repo Settings → Secrets"; exit 1; }
+  [[ -z "${API_KEYS:-}" ]]             && { echo "ERROR: API_KEYS secret is not set in GitHub Actions — add it under repo Settings → Secrets"; exit 1; }
+fi
+
 AWS_REGION="${AWS_REGION:-us-east-1}"
 AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID}"
 ECR_BASE="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
