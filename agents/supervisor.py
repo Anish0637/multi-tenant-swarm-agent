@@ -231,8 +231,8 @@ class SupervisorAgent(BaseAgent):
                 if chunks:
                     state["kb_context"] = "\n\n".join(chunks)
         except Exception as exc:
-            # Non-fatal — log but continue; validate will catch missing task_type
-            logger.error("_classify_intent failed: %s", exc)
+            logger.error("_classify_intent failed: %s", exc, exc_info=True)
+            state["error"] = f"Intent classification failed: {exc}"
 
         return state
 
@@ -262,7 +262,14 @@ class SupervisorAgent(BaseAgent):
                 state["result"]["formatted_response"] = state["formatted_response"]
                 state["result"]["intent_confidence"] = state.get("intent_confidence")
         except Exception as exc:
-            logger.error("_format_response failed: %s", exc)
+            logger.error("_format_response failed: %s", exc, exc_info=True)
+            # Non-fatal: degrade gracefully — use stringified result so user gets something
+            result = state.get("result") or {}
+            state["formatted_response"] = (
+                result.get("formatted_response")
+                or str(result)
+                or "Request processed."
+            )
 
         return state
 

@@ -103,33 +103,6 @@ class ChatResponse(BaseModel):
     correlation_id: Optional[str] = None
 
 
-class ChatRequest(BaseModel):
-    """Free-text chat request that triggers the autonomous LLM flow."""
-
-    message: str = Field(..., min_length=1, max_length=4096)
-    tenant_id: str = Field(default="default")
-    user_id: str = Field(default="user")
-    correlation_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
-
-    @field_validator("message", mode="before")
-    @classmethod
-    def sanitise_message(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("message must not be empty")
-        return v.strip()
-
-
-class ChatResponse(BaseModel):
-    """Response from the autonomous chat endpoint."""
-
-    response: str
-    agent_used: Optional[str] = None
-    task_type: Optional[str] = None
-    confidence: Optional[float] = None
-    status: str
-    correlation_id: Optional[str] = None
-
-
 class AgentInfo(BaseModel):
     """Agent information"""
 

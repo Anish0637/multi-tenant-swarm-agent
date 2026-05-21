@@ -36,6 +36,7 @@ from starlette.status import (
 )
 
 from config.logging_config import get_logger
+from config.production import get_app_config
 
 logger = get_logger("public-api")
 
@@ -43,9 +44,27 @@ logger = get_logger("public-api")
 # Settings (read from environment / .env)
 # ============================================================
 
-MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:9000")
-INTERNAL_API_KEY = os.getenv("MCP_INTERNAL_API_KEY", "sk-internal-key")
-API_KEYS = set(os.getenv("API_KEYS", "sk-prod-demo-key-12345678").split(","))
+MCP_SERVER_URL = get_app_config().mcp_server_url
+
+_env = os.getenv("ENV", "development")
+
+_internal_key = os.getenv("MCP_INTERNAL_API_KEY")
+if not _internal_key:
+    if _env == "production":
+        raise ValueError("MCP_INTERNAL_API_KEY environment variable is required in production")
+    import secrets as _secrets
+    _internal_key = f"dev-{_secrets.token_hex(16)}"
+    logger.warning("MCP_INTERNAL_API_KEY not set — using ephemeral dev key (not for production)")
+INTERNAL_API_KEY: str = _internal_key
+
+_api_keys_raw = os.getenv("API_KEYS", "")
+if not _api_keys_raw:
+    if _env == "production":
+        raise ValueError("API_KEYS environment variable is required in production")
+    import secrets as _secrets
+    _api_keys_raw = f"dev-{_secrets.token_hex(16)}"
+    logger.warning("API_KEYS not set — using ephemeral dev key (not for production)")
+API_KEYS: set = set(_api_keys_raw.split(","))
 
 # ============================================================
 # Pydantic models

@@ -30,7 +30,8 @@ st.markdown("""
 
 # Config
 import os
-MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:9000")
+from config.production import get_app_config as _get_app_config
+MCP_SERVER_URL = _get_app_config().mcp_server_url
 TIMEOUT = 10
 
 # Session state

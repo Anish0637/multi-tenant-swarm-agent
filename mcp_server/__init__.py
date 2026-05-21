@@ -2,6 +2,20 @@
 Package initialization for MCP server module.
 """
 
-from mcp_server.server import MCPServer, ToolDefinition, ToolRequest, ToolResponse
+# Primary (production) server — use this in all new code
+from mcp_server.production_server import ProductionMCPServer, ToolSchema, ToolRequest, ToolResponse
 
-__all__ = ["MCPServer", "ToolDefinition", "ToolRequest", "ToolResponse"]
+# Legacy compatibility — MCPServer, ToolDefinition kept for main.py and test_mcp_server.py
+from mcp_server.server import MCPServer, ToolDefinition
+from mcp_server.server import ToolRequest as _LegacyToolRequest  # noqa: F401
+
+__all__ = [
+    # Production
+    "ProductionMCPServer",
+    "ToolSchema",
+    "ToolRequest",
+    "ToolResponse",
+    # Legacy (deprecated — use ProductionMCPServer instead)
+    "MCPServer",
+    "ToolDefinition",
+]

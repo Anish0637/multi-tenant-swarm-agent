@@ -135,13 +135,14 @@ class MedicalAgent(BaseAgent):
         )
         state["result"] = {
             "action": "patient_data_fetched",
-            "patient_id": state["payload"].get("patient_id"),
+            "patient_id": "[REDACTED]",  # Masked per HIPAA
             "data": {
-                "mrn": "***-****",  # Masked per HIPAA
-                "age": 45,
-                "gender": "M",
-                "conditions": ["Hypertension", "Type 2 Diabetes"],
+                "mrn": "***-****",        # Masked per HIPAA
+                "age": "[REDACTED]",      # Masked per HIPAA
+                "gender": "[REDACTED]",   # Masked per HIPAA
+                "conditions": ["[REDACTED]"],  # Masked per HIPAA
             },
+            "phi_masked": True,
         }
         return state
 

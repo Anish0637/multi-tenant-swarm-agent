@@ -115,6 +115,7 @@ class AppConfig(BaseSettings):
     # Service endpoints
     mcp_server_host: str = Field(default="0.0.0.0", env="MCP_SERVER_HOST")
     mcp_server_port: int = Field(default=9000, env="MCP_SERVER_PORT")
+    mcp_server_url: str = Field(default="http://localhost:9000", env="MCP_SERVER_URL")
 
     # Feature flags
     enable_traces: bool = Field(default=True, env="ENABLE_TRACES")

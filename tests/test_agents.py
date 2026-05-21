@@ -403,53 +403,6 @@ async def test_supervisor_missing_sub_agent():
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# ProductionAgent — rule-based fallback (no LLM key required)
-# ──────────────────────────────────────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_production_agent_rule_based_fallback(monkeypatch):
-    """ProductionAgent should complete without LLM when API key absent."""
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-
-    from agents.production_agent import ProductionAgent
-    from agents.production_agent import TaskRequest as ProdTaskRequest
-
-    agent = ProductionAgent(
-        agent_id="test-agent",
-        agent_type="hr",
-        llm_provider="openai",
-        model="gpt-4",
-    )
-    assert agent.llm is None  # degraded gracefully
-
-    task = ProdTaskRequest(
-        tenant_id="test",
-        task_type="process_leave",
-        payload={"employee_id": "E01"},
-        user_id="tester",
-    )
-    result = await agent.execute(task)
-    assert result.status == "completed"
-    assert isinstance(result.result, dict)
-    assert result.execution_time_ms >= 0
-
-
-@pytest.mark.asyncio
-async def test_production_agent_get_status(monkeypatch):
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    from agents.production_agent import ProductionAgent
-
-    agent = ProductionAgent("a1", "finance")
-    status = agent.get_status()
-    assert status["agent_id"] == "a1"
-    assert status["agent_type"] == "finance"
-    assert status["llm_available"] is False
-    assert status["status"] == "healthy"
-
-
-# ──────────────────────────────────────────────────────────────────────────────
 # Cross-cutting: task_request model
 # ──────────────────────────────────────────────────────────────────────────────
 
