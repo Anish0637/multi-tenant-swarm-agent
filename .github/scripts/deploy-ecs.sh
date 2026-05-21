@@ -35,6 +35,7 @@ deploy_service() {
   local TASK_FAMILY="$2"
   local IMAGE="$3"
   local CONTAINER="$4"
+  local ENV_OVERRIDES="${5:-}"  # optional JSON object {"KEY":"value",...}
 
   echo ""
   echo "▶  Updating $SERVICE ..."
@@ -45,17 +46,23 @@ deploy_service() {
     --query 'taskDefinition' \
     --output json)
 
-  # 2. Swap image (use the explicit IMAGE arg), strip read-only fields
+  # 2. Swap image (use the explicit IMAGE arg), optionally upsert env vars, strip read-only fields
   # Note: use -c to avoid the pipe+heredoc stdin conflict (heredoc overrides pipe)
   NEW_TASK_DEF=$(echo "$TASK_DEF" | \
-    CONTAINER_NAME="$CONTAINER" NEW_IMAGE="$IMAGE" python3 -c '
+    CONTAINER_NAME="$CONTAINER" NEW_IMAGE="$IMAGE" ENV_OVERRIDES="$ENV_OVERRIDES" python3 -c '
 import json, sys, os
 td = json.load(sys.stdin)
 container = os.environ["CONTAINER_NAME"]
 new_image = os.environ["NEW_IMAGE"]
+env_overrides_str = os.environ.get("ENV_OVERRIDES", "")
+env_overrides = json.loads(env_overrides_str) if env_overrides_str else {}
 for c in td["containerDefinitions"]:
     if c["name"] == container:
         c["image"] = new_image
+        if env_overrides:
+            existing = {e["name"]: e["value"] for e in c.get("environment", [])}
+            existing.update(env_overrides)
+            c["environment"] = [{"name": k, "value": v} for k, v in existing.items()]
 for key in ["taskDefinitionArn","revision","status","requiresAttributes",
             "compatibilities","registeredAt","registeredBy"]:
     td.pop(key, None)
@@ -86,8 +93,11 @@ print(f'   desired={d[\"desiredCount\"]}  running={d[\"runningCount\"]}  status=
 }
 
 # ── Deploy each service ──────────────────────────────────────────────────────
+# Build env-var override JSON for public-api (injected from CI secrets)
+PUBLIC_API_ENV="{\"MCP_INTERNAL_API_KEY\":\"${MCP_INTERNAL_API_KEY:-}\",\"API_KEYS\":\"${API_KEYS:-}\"}"
+
 deploy_service "mcp-server"      "mcp-server"     "$ECR_BASE/mcp-server:$TAG"                        "mcp-server"
-deploy_service "public-api"      "public-api"     "$ECR_BASE/multi-tenant-swarm-agent:api-$TAG"      "public-api"
+deploy_service "public-api"      "public-api"     "$ECR_BASE/multi-tenant-swarm-agent:api-$TAG"      "public-api"  "$PUBLIC_API_ENV"
 deploy_service "webapp"          "webapp"         "$ECR_BASE/multi-tenant-swarm-agent:webapp-$TAG"   "webapp"
 deploy_service "hr-agent"        "hr-agent"       "$ECR_BASE/multi-tenant-swarm-agent:$TAG"          "hr-agent"
 deploy_service "finance-agent"   "finance-agent"  "$ECR_BASE/multi-tenant-swarm-agent:$TAG"          "finance-agent"

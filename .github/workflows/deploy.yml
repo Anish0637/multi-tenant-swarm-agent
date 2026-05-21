@@ -243,6 +243,8 @@ jobs:
       - name: Deploy all services to production
         env:
           IMAGE_TAG: ${{ needs.build.outputs.image_tag }}
+          MCP_INTERNAL_API_KEY: ${{ secrets.MCP_INTERNAL_API_KEY }}
+          API_KEYS: ${{ secrets.API_KEYS }}
         run: |
           bash .github/scripts/deploy-ecs.sh \
             --cluster  "$ECS_CLUSTER" \
