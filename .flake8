@@ -36,3 +36,7 @@ extend-ignore =
     E501,
     # Bare except — acceptable in UI/streamlit code
     E722,
+    # Whitespace before ':' — conflicts with black formatting
+    E203,
+    # Line break before binary operator — conflicts with black formatting
+    W503,

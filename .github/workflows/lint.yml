@@ -28,4 +28,4 @@ jobs:
       run: isort --profile black --check-only agents/ mcp_server/ registry/ access_control/ tests/
 
     - name: Lint with flake8
-      run: flake8 agents/ mcp_server/ registry/ access_control/ tests/ --max-line-length=120 --extend-ignore=E203,W503
+      run: flake8 agents/ mcp_server/ registry/ access_control/ tests/
