@@ -78,6 +78,9 @@ def setup_logging(logger_name: Optional[str] = None) -> logging.Logger:
 
     # File handler with rotation (local development/debugging)
     if app_config.env != "production":
+        import os
+
+        os.makedirs("logs", exist_ok=True)
         file_handler = RotatingFileHandler(
             f"logs/{logger_name or 'swarm-agent'}.log",
             maxBytes=10485760,  # 10MB
