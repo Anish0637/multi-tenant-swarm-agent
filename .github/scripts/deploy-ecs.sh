@@ -112,14 +112,70 @@ deploy_service "finance-agent"   "finance-agent"  "$ECR_BASE/multi-tenant-swarm-
 deploy_service "medical-agent"   "medical-agent"  "$ECR_BASE/multi-tenant-swarm-agent:$TAG"          "medical-agent"
 
 # ── Wait for services to stabilize ──────────────────────────────────────────
+# aws ecs wait services-stable is limited to 40×15 s = 10 min and exits 255 on
+# timeout.  We replace it with a custom poll that waits up to 20 min, prints
+# per-service status, and exits non-zero with a clear message on real failure.
 echo ""
-echo "⏳  Waiting for services to stabilize (up to 10 min)..."
+echo "⏳  Waiting for services to stabilize (up to 20 min)..."
 
 SERVICES="mcp-server public-api webapp hr-agent finance-agent medical-agent"
 
-aws ecs wait services-stable \
-  --cluster "$CLUSTER" \
-  --services $SERVICES
+MAX_WAIT=1200   # 20 minutes
+INTERVAL=20     # poll every 20 s
+ELAPSED=0
+
+until [[ $ELAPSED -ge $MAX_WAIT ]]; do
+  # Query all services in one call
+  STATUS_JSON=$(aws ecs describe-services \
+    --cluster "$CLUSTER" \
+    --services $SERVICES \
+    --query 'services[*].{name:serviceName,desired:desiredCount,running:runningCount,pending:pendingCount,rollout:deployments[0].rolloutState}' \
+    --output json)
+
+  # Count how many are fully stable (PRIMARY rollout COMPLETED, running==desired, pending==0)
+  STABLE=$(echo "$STATUS_JSON" | python3 -c "
+import json, sys
+svcs = json.load(sys.stdin)
+stable = sum(1 for s in svcs
+             if s.get('rollout') == 'COMPLETED'
+             and s['running'] == s['desired']
+             and s['pending'] == 0)
+print(stable)
+")
+
+  TOTAL=$(echo "$STATUS_JSON" | python3 -c "import json,sys; print(len(json.load(sys.stdin)))")
+
+  echo "  [${ELAPSED}s]  ${STABLE}/${TOTAL} services stable"
+
+  # Print one-line status per service for visibility
+  echo "$STATUS_JSON" | python3 -c "
+import json, sys
+for s in json.load(sys.stdin):
+    icon = '✅' if (s.get('rollout')=='COMPLETED' and s['running']==s['desired'] and s['pending']==0) else '⏳'
+    print(f\"    {icon}  {s['name']:20s}  desired={s['desired']}  running={s['running']}  pending={s['pending']}  rollout={s.get('rollout','?')}\")
+"
+
+  if [[ "$STABLE" == "$TOTAL" ]]; then
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  ✅ All services stable — tag $TAG deployed"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    break
+  fi
+
+  sleep "$INTERVAL"
+  ELAPSED=$(( ELAPSED + INTERVAL ))
+done
+
+if [[ $ELAPSED -ge $MAX_WAIT && "$STABLE" != "$TOTAL" ]]; then
+  echo ""
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  ⚠️  Timeout after ${MAX_WAIT}s — ${STABLE}/${TOTAL} stable."
+  echo "  Deploy was triggered but services may still be converging."
+  echo "  Check ECS console for task failure reasons."
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  exit 1
+fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
