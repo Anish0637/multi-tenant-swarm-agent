@@ -89,7 +89,8 @@ class BedrockClient:
         user: str,
         system: str = "",
         max_tokens: int = 1024,
-    ) -> dict:        """
+    ) -> dict:
+        """
         Like invoke() but parses the first JSON object from the response.
         Returns an empty dict on parse failure.
         """
