@@ -46,20 +46,22 @@ deploy_service() {
     --output json)
 
   # 2. Swap image tag, strip read-only fields
-  NEW_TASK_DEF=$(echo "$TASK_DEF" | python3 - << PYEOF
-import json, sys
+  # Note: use -c to avoid the pipe+heredoc stdin conflict (heredoc overrides pipe)
+  NEW_TASK_DEF=$(echo "$TASK_DEF" | \
+    CONTAINER_NAME="$CONTAINER" IMAGE_TAG="$TAG" python3 -c '
+import json, sys, os
 td = json.load(sys.stdin)
+container = os.environ["CONTAINER_NAME"]
+tag = os.environ["IMAGE_TAG"]
 for c in td["containerDefinitions"]:
-    if c["name"] == "$CONTAINER":
-        # Replace only the tag, keep the rest of the image URI
+    if c["name"] == container:
         base = c["image"].rsplit(":", 1)[0]
-        c["image"] = f"{base}:$TAG"
+        c["image"] = f"{base}:{tag}"
 for key in ["taskDefinitionArn","revision","status","requiresAttributes",
             "compatibilities","registeredAt","registeredBy"]:
     td.pop(key, None)
 print(json.dumps(td))
-PYEOF
-)
+')
 
   # 3. Register new task definition revision
   NEW_REVISION=$(aws ecs register-task-definition \
