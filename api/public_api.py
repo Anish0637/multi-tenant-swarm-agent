@@ -15,18 +15,20 @@ Endpoints:
 """
 
 import asyncio
+import collections
+import time
 import uuid
 import httpx
 import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Depends, Security, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, Request, Security, BackgroundTasks
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
-from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_202_ACCEPTED
+from starlette.status import HTTP_403_FORBIDDEN, HTTP_404_NOT_FOUND, HTTP_202_ACCEPTED, HTTP_429_TOO_MANY_REQUESTS
 
 from config.logging_config import get_logger
 
@@ -100,10 +102,77 @@ class HealthResponse(BaseModel):
 
 
 # ============================================================
-# In-memory task store (replace with DynamoDB/Redis in prod)
+# Task store — Redis-backed with in-memory fallback
 # ============================================================
 
-_task_store: Dict[str, Dict[str, Any]] = {}
+class TaskStore:
+    """Async task store.  Uses Redis when REDIS_URL is set; falls back to dict."""
+
+    def __init__(self) -> None:
+        self._redis = None
+        self._mem: Dict[str, Any] = {}
+        redis_url = os.getenv("REDIS_URL")
+        if redis_url:
+            try:
+                import redis.asyncio as aioredis  # type: ignore
+                self._redis = aioredis.from_url(redis_url, decode_responses=True)
+                logger.info("TaskStore: Redis backend at %s", redis_url)
+            except Exception as exc:  # pragma: no cover
+                logger.warning("Redis unavailable, using in-memory store: %s", exc)
+        else:
+            logger.info("TaskStore: using in-memory backend (no REDIS_URL set)")
+
+    async def set(self, task_id: str, data: Dict[str, Any], ttl: int = 86400) -> None:
+        if self._redis:
+            import json
+            await self._redis.setex(f"task:{task_id}", ttl, json.dumps(data))
+        else:
+            self._mem[task_id] = data
+
+    async def get(self, task_id: str) -> Optional[Dict[str, Any]]:
+        if self._redis:
+            import json
+            raw = await self._redis.get(f"task:{task_id}")
+            return json.loads(raw) if raw else None
+        return self._mem.get(task_id)
+
+    async def update(self, task_id: str, updates: Dict[str, Any], ttl: int = 86400) -> None:
+        existing = (await self.get(task_id)) or {}
+        existing.update(updates)
+        await self.set(task_id, existing, ttl=ttl)
+
+
+task_store = TaskStore()
+
+
+# ============================================================
+# Per-tenant rate limiter (sliding window)
+# ============================================================
+
+class TenantRateLimiter:
+    """Sliding-window rate limiter keyed by tenant_id."""
+
+    def __init__(self, limit: int = 60, window: int = 60) -> None:
+        self._limit  = limit
+        self._window = window
+        self._buckets: Dict[str, collections.deque] = {}
+
+    def is_allowed(self, tenant_id: str) -> bool:
+        now = time.monotonic()
+        dq  = self._buckets.setdefault(tenant_id, collections.deque())
+        cutoff = now - self._window
+        while dq and dq[0] < cutoff:
+            dq.popleft()
+        if len(dq) >= self._limit:
+            return False
+        dq.append(now)
+        return True
+
+
+_rate_limiter = TenantRateLimiter(
+    limit=int(os.getenv("TENANT_RATE_LIMIT", "60")),
+    window=int(os.getenv("TENANT_RATE_WINDOW", "60")),
+)
 
 
 # ============================================================
@@ -152,9 +221,13 @@ app.add_middleware(
 # Helper: forward task to MCP Server
 # ============================================================
 
-async def _dispatch_to_mcp(task_id: str, request: TaskSubmitRequest) -> None:
+async def _dispatch_to_mcp(
+    task_id: str,
+    request: TaskSubmitRequest,
+    correlation_id: str,
+) -> None:
     """Background task: send the job to the MCP server and update task store."""
-    _task_store[task_id]["status"] = "processing"
+    await task_store.update(task_id, {"status": "processing"})
 
     payload = {
         "tool_name": "submit_task",
@@ -166,7 +239,7 @@ async def _dispatch_to_mcp(task_id: str, request: TaskSubmitRequest) -> None:
             "tenant_id": request.tenant_id,
             "priority": request.priority,
         },
-        "context": {"task_id": task_id},
+        "context": {"task_id": task_id, "correlation_id": correlation_id},
     }
 
     try:
@@ -174,12 +247,15 @@ async def _dispatch_to_mcp(task_id: str, request: TaskSubmitRequest) -> None:
             response = await client.post(
                 f"{MCP_SERVER_URL}/tools/execute",
                 json=payload,
-                headers={"X-API-Key": INTERNAL_API_KEY},
+                headers={
+                    "X-API-Key": INTERNAL_API_KEY,
+                    "X-Correlation-ID": correlation_id,
+                },
             )
             response.raise_for_status()
             data = response.json()
 
-            _task_store[task_id].update({
+            await task_store.update(task_id, {
                 "status": data.get("status", "completed"),
                 "result": data.get("result"),
                 "completed_at": datetime.utcnow().isoformat(),
@@ -187,8 +263,8 @@ async def _dispatch_to_mcp(task_id: str, request: TaskSubmitRequest) -> None:
             })
 
     except Exception as exc:
-        logger.error(f"Task dispatch failed: {exc}", extra={"task_id": task_id})
-        _task_store[task_id].update({
+        logger.error("Task dispatch failed: %s", exc, extra={"task_id": task_id})
+        await task_store.update(task_id, {
             "status": "failed",
             "error": str(exc),
             "completed_at": datetime.utcnow().isoformat(),
@@ -240,7 +316,11 @@ async def list_agents():
     tags=["Tasks"],
     dependencies=[Depends(verify_api_key)],
 )
-async def submit_task(request: TaskSubmitRequest, background_tasks: BackgroundTasks):
+async def submit_task(
+    request: TaskSubmitRequest,
+    background_tasks: BackgroundTasks,
+    http_request: Request,
+):
     """
     Submit a task to an agent.
 
@@ -261,27 +341,48 @@ async def submit_task(request: TaskSubmitRequest, background_tasks: BackgroundTa
     }
     ```
     """
+    # ── rate limiting ─────────────────────────────────────────────────────
+    if not _rate_limiter.is_allowed(request.tenant_id):
+        raise HTTPException(
+            status_code=HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Rate limit exceeded for tenant '{request.tenant_id}'. "
+                   f"Max {os.getenv('TENANT_RATE_LIMIT', '60')} requests per minute.",
+        )
+
+    # ── correlation ID ────────────────────────────────────────────────────
+    correlation_id = (
+        http_request.headers.get("X-Correlation-ID")
+        or str(uuid.uuid4())
+    )
+
     task_id = str(uuid.uuid4())
     now = datetime.utcnow().isoformat()
 
-    _task_store[task_id] = {
+    await task_store.set(task_id, {
         "task_id": task_id,
         "status": "accepted",
         "agent_type": request.agent_type,
         "task_type": request.task_type,
         "tenant_id": request.tenant_id,
+        "correlation_id": correlation_id,
         "created_at": now,
         "result": None,
         "error": None,
         "completed_at": None,
         "execution_time_ms": None,
-    }
-
-    background_tasks.add_task(_dispatch_to_mcp, task_id, request)
-
-    logger.info("Task accepted", extra={
-        "task_id": task_id, "agent_type": request.agent_type, "tenant_id": request.tenant_id
     })
+
+    background_tasks.add_task(_dispatch_to_mcp, task_id, request, correlation_id)
+
+    logger.info(
+        "Task accepted",
+        extra={
+            "task_id": task_id,
+            "agent_type": request.agent_type,
+            "tenant_id": request.tenant_id,
+            "correlation_id": correlation_id,
+        },
+    )
 
     return TaskSubmitResponse(
         task_id=task_id,
@@ -303,7 +404,7 @@ async def get_task_status(task_id: str):
 
     Status values: `accepted` → `processing` → `completed` | `failed`
     """
-    task = _task_store.get(task_id)
+    task = await task_store.get(task_id)
     if not task:
         raise HTTPException(status_code=HTTP_404_NOT_FOUND, detail=f"Task '{task_id}' not found")
     return TaskStatusResponse(**task)
