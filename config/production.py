@@ -7,7 +7,7 @@ import logging
 from functools import lru_cache
 from typing import Any, Dict, Optional
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import AliasChoices, ConfigDict, Field, field_validator
 from pydantic_settings import BaseSettings
 
 
@@ -91,7 +91,15 @@ class SecurityConfig(BaseSettings):
 
     api_key_enabled: bool = Field(default=True, env="API_KEY_ENABLED")
     api_key_header: str = Field(default="X-API-Key", env="API_KEY_HEADER")
-    api_keys: Dict[str, str] = Field(default_factory=dict, env="API_KEYS")
+    # API_KEYS env var is a plain comma-separated string, NOT JSON, so we must
+    # NOT let pydantic-settings auto-parse it as Dict[str, str] (it would crash).
+    # Auth uses _VALID_KEYS built from os.getenv("API_KEYS") directly.
+    # We point validation_alias to a never-set var so pydantic-settings skips it;
+    # tests inject this dict via MagicMock attribute assignment.
+    api_keys: Dict[str, str] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices('API_KEYS_JSON_DICT'),
+    )
     rate_limit_enabled: bool = Field(default=True, env="RATE_LIMIT_ENABLED")
     rate_limit_requests: int = Field(default=1000, env="RATE_LIMIT_REQUESTS")
     rate_limit_period: int = Field(default=60, env="RATE_LIMIT_PERIOD")
