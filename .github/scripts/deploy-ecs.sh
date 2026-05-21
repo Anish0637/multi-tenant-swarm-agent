@@ -45,18 +45,17 @@ deploy_service() {
     --query 'taskDefinition' \
     --output json)
 
-  # 2. Swap image tag, strip read-only fields
+  # 2. Swap image (use the explicit IMAGE arg), strip read-only fields
   # Note: use -c to avoid the pipe+heredoc stdin conflict (heredoc overrides pipe)
   NEW_TASK_DEF=$(echo "$TASK_DEF" | \
-    CONTAINER_NAME="$CONTAINER" IMAGE_TAG="$TAG" python3 -c '
+    CONTAINER_NAME="$CONTAINER" NEW_IMAGE="$IMAGE" python3 -c '
 import json, sys, os
 td = json.load(sys.stdin)
 container = os.environ["CONTAINER_NAME"]
-tag = os.environ["IMAGE_TAG"]
+new_image = os.environ["NEW_IMAGE"]
 for c in td["containerDefinitions"]:
     if c["name"] == container:
-        base = c["image"].rsplit(":", 1)[0]
-        c["image"] = f"{base}:{tag}"
+        c["image"] = new_image
 for key in ["taskDefinitionArn","revision","status","requiresAttributes",
             "compatibilities","registeredAt","registeredBy"]:
     td.pop(key, None)
