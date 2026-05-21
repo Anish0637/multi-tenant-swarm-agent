@@ -36,6 +36,8 @@ TIMEOUT = 10
 # Session state
 if 'tasks_submitted' not in st.session_state:
     st.session_state.tasks_submitted = []
+if 'chat_history' not in st.session_state:
+    st.session_state.chat_history = []
 
 # Helper functions
 def make_request(tool_name: str, parameters: Dict[str, Any], tool_id: str = "req-001") -> Dict:
@@ -131,7 +133,78 @@ with col3:
 st.markdown("---")
 
 # Main tabs
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Dashboard", "➕ Submit Task", "👥 Agent Status", "📝 History"])
+tab0, tab1, tab2, tab3, tab4 = st.tabs(["💬 Chat", "📊 Dashboard", "➕ Submit Task", "👥 Agent Status", "📝 History"])
+
+# TAB 0: Chat
+with tab0:
+    st.subheader("Ask anything — HR, Finance, or Medical")
+    st.caption("Powered by AWS Bedrock · Claude 3.5 Haiku · OpenSearch Knowledge Base")
+
+    # Sidebar inputs for chat context
+    with st.expander("⚙️ Chat settings", expanded=False):
+        chat_tenant = st.text_input("Tenant ID", value="default", key="chat_tenant")
+        chat_user = st.text_input("User ID", value="user", key="chat_user")
+
+    # Display chat history
+    chat_container = st.container()
+    with chat_container:
+        for msg in st.session_state.chat_history:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+                if msg["role"] == "assistant" and msg.get("meta"):
+                    meta = msg["meta"]
+                    cols = st.columns(4)
+                    if meta.get("agent_used"):
+                        cols[0].caption(f"🤖 {meta['agent_used']}")
+                    if meta.get("task_type"):
+                        cols[1].caption(f"📋 {meta['task_type']}")
+                    if meta.get("confidence") is not None:
+                        conf_pct = int(meta["confidence"] * 100)
+                        cols[2].caption(f"🎯 {conf_pct}% confidence")
+                    if meta.get("status"):
+                        icon = "✅" if meta["status"] == "success" else "❌"
+                        cols[3].caption(f"{icon} {meta['status']}")
+
+    # Chat input
+    if prompt := st.chat_input("Type your question here… e.g. 'I need 3 days leave next week'"):
+        # Show user message immediately
+        st.session_state.chat_history.append({"role": "user", "content": prompt, "meta": {}})
+
+        with st.spinner("Thinking…"):
+            try:
+                resp = requests.post(
+                    f"{MCP_SERVER_URL}/chat",
+                    json={
+                        "message": prompt,
+                        "tenant_id": st.session_state.get("chat_tenant", "default"),
+                        "user_id": st.session_state.get("chat_user", "user"),
+                    },
+                    timeout=30,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                answer = data.get("response", "No response from agent.")
+                meta = {
+                    "agent_used": data.get("agent_used"),
+                    "task_type": data.get("task_type"),
+                    "confidence": data.get("confidence"),
+                    "status": data.get("status"),
+                }
+            except requests.exceptions.ConnectionError:
+                answer = "⚠️ Cannot connect to the MCP server. Is it running on `{}`?".format(MCP_SERVER_URL)
+                meta = {}
+            except Exception as e:
+                answer = f"⚠️ Error: {e}"
+                meta = {}
+
+        st.session_state.chat_history.append({"role": "assistant", "content": answer, "meta": meta})
+        st.rerun()
+
+    # Clear chat button
+    if st.session_state.chat_history:
+        if st.button("🗑️ Clear chat", type="secondary", key="clear_chat"):
+            st.session_state.chat_history = []
+            st.rerun()
 
 # TAB 1: Dashboard
 with tab1:

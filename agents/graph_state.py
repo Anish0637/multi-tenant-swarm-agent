@@ -33,10 +33,16 @@ class AgentGraphState(TypedDict):
     retry_count: int
     metadata: Dict[str, Any]
     correlation_id: str  # propagated from X-Correlation-ID header end-to-end
+    # ── autonomous LLM-flow fields (set only in chat/free-text path) ────────
+    user_message: Optional[str]         # raw free-text input from the user
+    formatted_response: Optional[str]   # LLM-generated natural-language reply
+    intent_confidence: Optional[float]  # 0.0-1.0 classifier confidence score
+    kb_context: Optional[str]           # retrieved Knowledge Base context chunks
 
 
 def state_from_task(task: TaskRequest) -> AgentGraphState:
     """Build an initial AgentGraphState from a TaskRequest."""
+    ctx = task.context or {}
     return AgentGraphState(
         task_id=task.id,
         tenant_id=task.tenant_id,
@@ -51,7 +57,11 @@ def state_from_task(task: TaskRequest) -> AgentGraphState:
         updated_at=datetime.utcnow().isoformat(),
         retry_count=0,
         metadata={},
-        correlation_id=(task.context or {}).get("correlation_id", str(uuid.uuid4())),
+        correlation_id=ctx.get("correlation_id", str(uuid.uuid4())),
+        user_message=ctx.get("user_message"),
+        formatted_response=None,
+        intent_confidence=None,
+        kb_context=None,
     )
 
 

@@ -6,6 +6,7 @@ Handles tool management, agent routing, and request processing with security & m
 import asyncio
 import json
 import logging
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -73,6 +74,60 @@ class ToolResponse(BaseModel):
     error: Optional[str] = None
     execution_time_ms: float
     timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+
+
+class ChatRequest(BaseModel):
+    """Free-text chat request that triggers the autonomous LLM flow."""
+
+    message: str = Field(..., min_length=1, max_length=4096)
+    tenant_id: str = Field(default="default")
+    user_id: str = Field(default="user")
+    correlation_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def sanitise_message(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("message must not be empty")
+        return v.strip()
+
+
+class ChatResponse(BaseModel):
+    """Response from the autonomous chat endpoint."""
+
+    response: str
+    agent_used: Optional[str] = None
+    task_type: Optional[str] = None
+    confidence: Optional[float] = None
+    status: str
+    correlation_id: Optional[str] = None
+
+
+class ChatRequest(BaseModel):
+    """Free-text chat request that triggers the autonomous LLM flow."""
+
+    message: str = Field(..., min_length=1, max_length=4096)
+    tenant_id: str = Field(default="default")
+    user_id: str = Field(default="user")
+    correlation_id: Optional[str] = Field(default_factory=lambda: str(uuid.uuid4()))
+
+    @field_validator("message", mode="before")
+    @classmethod
+    def sanitise_message(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("message must not be empty")
+        return v.strip()
+
+
+class ChatResponse(BaseModel):
+    """Response from the autonomous chat endpoint."""
+
+    response: str
+    agent_used: Optional[str] = None
+    task_type: Optional[str] = None
+    confidence: Optional[float] = None
+    status: str
+    correlation_id: Optional[str] = None
 
 
 class AgentInfo(BaseModel):
@@ -364,6 +419,90 @@ class ProductionMCPServer:
             """Record custom metric"""
             logger.info("Metric recorded", extra={"metric": metric})
             return {"status": "recorded"}
+
+        @app.post("/chat", response_model=ChatResponse)
+        @limiter.limit("60/minute")
+        async def chat(
+            request: Request,
+            chat_request: ChatRequest,
+            auth: Dict = Depends(verify_api_key),
+        ):
+            """
+            Autonomous free-text chat endpoint.
+
+            Workflow:
+              1. Wrap user message in a TaskRequest with task_type="chat"
+              2. SupervisorAgent._classify_intent() calls Bedrock to extract
+                 domain / task_type / payload from the message
+              3. The resolved domain agent processes the structured request
+              4. SupervisorAgent._format_response() calls Bedrock to produce a
+                 natural-language reply
+            """
+            from agents.finance_agent import FinanceAgent
+            from agents.hr_agent import HRAgent
+            from agents.medical_agent import MedicalAgent
+            from agents.supervisor import SupervisorAgent
+            from agents.base_agent import TaskRequest as TR
+
+            start = time.time()
+            logger.info(
+                "Chat request received",
+                extra={"user_id": chat_request.user_id, "correlation_id": chat_request.correlation_id},
+            )
+
+            try:
+                supervisor = SupervisorAgent(
+                    use_bedrock=True,
+                    kb_id=os.getenv("BEDROCK_KB_ID"),
+                )
+                supervisor.register_sub_agent(HRAgent(tenant_id=chat_request.tenant_id))
+                supervisor.register_sub_agent(FinanceAgent(tenant_id=chat_request.tenant_id))
+                supervisor.register_sub_agent(MedicalAgent(tenant_id=chat_request.tenant_id))
+
+                task = TR(
+                    tenant_id=chat_request.tenant_id,
+                    task_type="chat",
+                    payload={},
+                    user_id=chat_request.user_id,
+                    context={
+                        "user_message": chat_request.message,
+                        "correlation_id": chat_request.correlation_id,
+                    },
+                )
+
+                result = await supervisor.handle_task(task)
+
+                if result.result and result.result.get("formatted_response"):
+                    formatted = result.result["formatted_response"]
+                elif result.result:
+                    formatted = str(result.result)
+                else:
+                    formatted = result.error or "Unable to process your request."
+
+                logger.info(
+                    "Chat request completed",
+                    extra={
+                        "status": result.status,
+                        "execution_ms": (time.time() - start) * 1000,
+                        "agent_used": result.metadata.get("routed_to"),
+                    },
+                )
+
+                return ChatResponse(
+                    response=formatted,
+                    agent_used=result.metadata.get("routed_to"),
+                    task_type=result.metadata.get("domain"),
+                    confidence=result.result.get("intent_confidence") if result.result else None,
+                    status=result.status,
+                    correlation_id=chat_request.correlation_id,
+                )
+
+            except Exception as exc:
+                logger.error("Chat endpoint error: %s", exc)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Chat processing failed",
+                )
 
     async def _global_exception_handler(self, request: Request, exc: Exception):
         """Global exception handler"""

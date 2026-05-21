@@ -45,6 +45,23 @@ class RedisConfig(BaseSettings):
         return f"{protocol}://{auth}{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
 
+class BedrockConfig(BaseSettings):
+    """AWS Bedrock LLM + Knowledge Base configuration"""
+
+    model_config = ConfigDict(env_file=".env", case_sensitive=False, extra="ignore")
+
+    bedrock_region: str = Field(default="us-east-1", env="BEDROCK_REGION")
+    bedrock_model_id: str = Field(
+        default="us.amazon.nova-2-lite-v1:0",
+        env="BEDROCK_MODEL_ID",
+    )
+    # Optional — leave empty to disable Knowledge Base RAG
+    bedrock_kb_id: Optional[str] = Field(default=None, env="BEDROCK_KB_ID")
+    bedrock_kb_model_arn: Optional[str] = Field(default=None, env="BEDROCK_KB_MODEL_ARN")
+    # Number of KB chunks to retrieve per query
+    bedrock_kb_results: int = Field(default=3, env="BEDROCK_KB_RESULTS")
+
+
 class DatabaseConfig(BaseSettings):
     """PostgreSQL database configuration"""
 
@@ -141,3 +158,9 @@ def get_security_config() -> SecurityConfig:
 def get_app_config() -> AppConfig:
     """Get app configuration (singleton)"""
     return AppConfig()
+
+
+@lru_cache(maxsize=1)
+def get_bedrock_config() -> BedrockConfig:
+    """Get Bedrock configuration (singleton)"""
+    return BedrockConfig()
