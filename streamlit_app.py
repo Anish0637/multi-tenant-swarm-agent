@@ -29,7 +29,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Config
-MCP_SERVER_URL = "http://localhost:9000"
+import os
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:9000")
 TIMEOUT = 10
 
 # Session state
